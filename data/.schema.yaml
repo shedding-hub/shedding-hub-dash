@@ -1,0 +1,238 @@
+# yaml-language-server: $schema=http://json-schema.org/draft-07/schema
+$defs:
+  negative_positive_number:
+    description: >
+      A quantitative value, `positive` result above limit of detection but below limit
+      of quantification, or `negative` result below the limit of detection.
+    oneOf:
+      - type: number
+        exclusiveMinimum: 0 # Zero should be coded as `negative`.
+      - type: string
+        enum: [positive, negative]
+  specimen_type_enum:
+    type: string
+    enum:
+      - stool
+      - sputum
+      - urine
+      - plasma
+      - throat_swab
+      - oropharyngeal_swab
+      - nasopharyngeal_swab
+      - saliva
+      - unknown
+  analyte_specification:
+    description: Specification of an analyte.
+    type: object
+    additionalProperties: false
+    properties:
+      description:
+        type: string
+        description: >
+          Description of the analyte, e.g., "RdRp gene target for SARS-CoV-2 RNA as
+          described in 10.2807/1560-7917.ES.2020.25.3.2000045".
+      limit_of_detection:
+        description: Lowest value at which the analyte can be detected.
+        oneOf:
+          - type: number
+            exclusiveMinimum: 0
+          - const: unknown
+      limit_of_quantification:
+        description: Lowest value at which the analyte can be reliably quantified.
+        oneOf:
+          - type: number
+            exclusiveMinimum: 0
+          - const: unknown
+      limit_of_blank:
+        description: Highest measurement result observed for a blank sample.
+        oneOf:
+          - type: number
+            exclusiveMinimum: 0
+          - const: unknown
+      specimen:
+        description: Specimen type or array of specimen types for combined samples.
+        oneOf:
+          - $ref: "#/$defs/specimen_type_enum"
+          - type: array
+            items:
+              $ref: "#/$defs/specimen_type_enum"
+            minItems: 2
+      biomarker:
+        description: Biomarker being measured.
+        type: string
+        enum:
+          - SARS-CoV-2
+          - mtDNA
+          - PMMoV
+          - crAssphage
+      gene_target:
+        description: The gene being targeted in qPCR or ddPCR if a genomic biomarker.
+          This field should be left empty for non-genomic biomarkers, e.g., drug
+          metabolites.
+        type: string
+      unit:
+        description: Units in which measurements are reported.
+        type: string
+        enum:
+          - gc/dry gram
+          - gc/mL
+          - gc/swab
+          - gc/wet gram
+          - cycle threshold
+      reference_event:
+        description: Event used as reference for `time` fields of measurements.
+        type: string
+        enum:
+          - symptom onset
+          - confirmation date
+          - enrollment
+    required:
+      - biomarker
+      - description
+      - limit_of_detection
+      - limit_of_quantification
+      - reference_event
+      - specimen
+      - unit
+
+type: object
+additionalProperties: false
+properties:
+  doi:
+    type: string
+    description: >
+      Digital object identifier for the source publication, study, or data repository.
+  url:
+    type: string
+    description: Url for the source publication, study, or data repository.
+  description:
+    type: string
+    description: >
+      Description of the dataset, including how the data were extracted or obtained. If
+      a temporal offset is associated with each sample, e.g., the time since symptom
+      onset, the reference event must be described here.
+  title:
+    type: string
+    description: Title of the source publication, study, or data repository.
+  analyte:
+    description: >
+      Specification of a single analyte in this dataset. This is equivalent to
+      specifying a key `default` in the more general `analytes` specification which can
+      be used to specify multiple analytes per sample.
+    $ref: "#/$defs/analyte_specification"
+  analytes:
+    type: object
+    description: >
+      Specification of multiple analytes in this dataset with keys matching the `values`
+      property of samples.
+    additionalProperties: false
+    minProperties: 1
+    patternProperties:
+      "^.*$":
+        $ref: "#/$defs/analyte_specification"
+  participants:
+    type: array
+    description: >
+      Array of participants, including their attributes (such as demographics,
+      comorbidities, and clinical characteristics) and an array of samples collected
+      from the participant. Participants may, for example, include patients who enrolled
+      during hospitalization or participants in a prospective study.
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - measurements
+      properties:
+        attributes:
+          type: object
+          properties:
+            sex:
+              description: Sex of the participant at birth.
+              type: string
+              enum:
+                - female
+                - male
+                - unknown
+            age:
+              description: Age of the participant in years.
+              oneOf:
+                - type: number
+                  minimum: 0
+                  maximum: 120
+                - const: unknown
+            race:
+              description: Race of the participant.
+              type: string
+              enum:
+                - asian
+                - black
+                - white
+                - other
+                - unknown
+            ethnicity:
+              description: Ethnicity of the participant.
+              type: string
+              enum:
+                - hispanic
+                - not hispanic
+                - unknown
+            vaccinated:
+              description: If the participant was vaccinated against the condition.
+              oneOf:
+                - type: boolean
+                - type: string
+                  constant: unknown
+            lineage:
+              description: Lineage information of the disease for the participant.
+              type: string
+        measurements:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              time:
+                description: >
+                  Temporal offset for the sample, e.g., relative to symptom onset, drug
+                  ingestion, or hospital admission. The reference event should be
+                  defined in the dataset description.
+                oneOf:
+                  - type: number
+                  - const: unknown
+              value:
+                $ref: "#/$defs/negative_positive_number"
+              analyte:
+                description: >
+                  Analyte for which a measurement is reported. The analyte key must
+                  appear in the dictionary of `analytes` metadata.
+                type: string
+              sample_id:
+                description: >
+                  Unique sample identifier if multiple measurements are reported for the
+                  same sample, e.g., replicates or different analytes.
+                type: [string, integer]
+              limit_of_quantification:
+                description: Lowest value at which the analyte can be reliably quantified.
+                oneOf:
+                  - type: number
+                  - const: unknown
+              limit_of_blank:
+                description: Highest measurement result observed for a blank sample.
+                oneOf:
+                  - type: number
+                  - const: unknown
+            required:
+              - time
+              - value
+required:
+  - description
+  - participants
+  - title
+# Require that either url or doi are given.
+oneOf:
+  - required:
+      - url
+  - required:
+      - doi
