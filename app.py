@@ -51,7 +51,8 @@ for df in range(0,len(list_yaml)):
 df_analyte = pd.DataFrame(list_analyte, columns=['ID', 'analyte', 'biomarker', 'gene_target', 'specimen', 'unit', 'LOD', 'LOQ', 'reference_event'])
 
 ### Initialize the app
-app = Dash()
+app = Dash(__name__)
+server = app.server
 
 ### App layout
 app.layout = [
