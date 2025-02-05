@@ -6,6 +6,7 @@ import yaml
 import fsspec, os, glob, re
 from pathlib import Path
 
+GITHUB_USERNAME = os.getenv("GITHUB_USERNAME") # Store username in env vars
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # Get token from Render env vars
 
 ### Customized Functions
@@ -27,7 +28,7 @@ def list_join(x):
 # recursive copy all yaml files from the shedding-hub repository;
 destination = Path.cwd()/"data"
 destination.mkdir(exist_ok=True, parents=True)
-fs = fsspec.filesystem("github", org="shedding-hub", repo="shedding-hub",token=GITHUB_TOKEN)
+fs = fsspec.filesystem("github", org="shedding-hub", repo="shedding-hub",user=GITHUB_USERNAME,token=GITHUB_TOKEN)
 fs.get(fs.glob("data/**/*.yaml"), destination.as_posix(), recursive=True)
 
 # load the yaml;
