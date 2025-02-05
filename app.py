@@ -3,8 +3,10 @@ from dash import Dash, html, dash_table, dcc, callback, Output, Input
 import pandas as pd
 import plotly.express as px
 import yaml
-import fsspec, glob, re
+import fsspec, os, glob, re
 from pathlib import Path
+
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # Get token from Render env vars
 
 ### Customized Functions
 # return unknown for variables not in yaml
@@ -25,7 +27,7 @@ def list_join(x):
 # recursive copy all yaml files from the shedding-hub repository;
 destination = Path.cwd()/"data"
 destination.mkdir(exist_ok=True, parents=True)
-fs = fsspec.filesystem("github", org="shedding-hub", repo="shedding-hub")
+fs = fsspec.filesystem("github", org="shedding-hub", repo="shedding-hub",token=GITHUB_TOKEN)
 fs.get(fs.glob("data/**/*.yaml"), destination.as_posix(), recursive=True)
 
 # load the yaml;
