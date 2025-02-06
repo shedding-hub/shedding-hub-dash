@@ -43,7 +43,7 @@ for file in list_file:
 list_analyte = []
 for df in range(0,len(list_yaml)):
     for analyte in list_yaml[df]['analytes']:
-        list_analyte.append([re.split(r'[\\.]+', list_file[df])[0],
+        list_analyte.append([re.split(r'[\\/.]+', list_file[df])[1],
                              analyte,
                              list_yaml[df]['analytes'][analyte]['biomarker'],
                              key_missing(list_yaml[df]['analytes'][analyte],'gene_target'), # For not required variables;
@@ -59,7 +59,7 @@ df_analyte = pd.DataFrame(list_analyte, columns=['ID', 'analyte', 'biomarker', '
 list_participant = []
 for df in range(0,len(list_yaml)):
     for participant_id in range(0,len(list_yaml[df]['participants'])):
-        list_participant.append([re.split(r'[\\.]+', list_file[df])[0],
+        list_participant.append([re.split(r'[\\/.]+', list_file[df])[1],
                                  participant_id+1, #start from 1;
                                  key_missing(key_missing(list_yaml[df]['participants'][participant_id],'attributes'),'age'), # For not required variables;
                                  key_missing(key_missing(list_yaml[df]['participants'][participant_id],'attributes'),'sex'), # For not required variables;
@@ -74,7 +74,7 @@ list_measurement = []
 for df in range(0,len(list_yaml)):
     for participant_id in range(0,len(list_yaml[df]['participants'])):
         for measurement_id in range(0,len(list_yaml[df]['participants'][participant_id]['measurements'])):
-            list_measurement.append([re.split(r'[\\.]+', list_file[df])[0],
+            list_measurement.append([re.split(r'[\\/.]+', list_file[df])[1],
                                      participant_id+1, #start from 1;
                                      measurement_id+1, #start from 1;
                                      key_missing(list_yaml[df]['participants'][participant_id]['measurements'][measurement_id],'analyte'), # For not required variables;
