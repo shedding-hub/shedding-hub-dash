@@ -88,7 +88,7 @@ temp_analyte = df_analyte.loc[(df_analyte["biomarker"]=="SARS-CoV-2") & (df_anal
 temp_participant = df_participant.loc[df_participant['ID'].isin(temp_analyte['ID'])]
 temp_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(temp_analyte['ID']+temp_analyte['analyte'])]
 
-fig_scatter1 = px.scatter(temp_measurement, x='time', y='value', log_y=True, color="ID", title='SARS-CoV-2 Shedding Data for Stool Samples', labels={"time": "Days after Symptom Onset", "value": "Viral Load (gc/mL or gc/dry gram)", "ID": "Study"})
+fig_scatter1 = px.scatter(temp_measurement, x='time', y='value', log_y=True, color="analyte", title='SARS-CoV-2 Shedding Data for Stool Samples', labels={"time": "Days after Symptom Onset", "value": "Viral Load (gc/mL or gc/dry gram)", "analyte": "Analyte"})
 
 ### Initialize the app
 app = Dash(__name__)
