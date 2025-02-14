@@ -231,13 +231,24 @@ app.layout = html.Div(
                 html.Div(
                     id="plots",
                     children=[
-                        html.B("SARS-CoV-2 Shedding Data for Stool Samples"),
                         html.Hr(),
-                        dcc.Graph(id='scatter_plot_symptom_onset'),
+                        html.Div([
+                                html.Div(dcc.Graph(id='scatter_plot_symptom_onset'), className="six columns"),
+                                html.Div(dcc.Graph(id='scatter_plot_symptom_onset_ct'), className="six columns"),
+                            ], className="row"
+                        ),
                         html.Hr(),
-                        dcc.Graph(id='scatter_plot_confirmation'),
+                        html.Div([
+                                html.Div(dcc.Graph(id='scatter_plot_confirmation'), className="six columns"),
+                                html.Div(dcc.Graph(id='scatter_plot_confirmation_ct'), className="six columns"),
+                            ], className="row"
+                        ),
                         html.Hr(),
-                        dcc.Graph(id='scatter_plot_enrollment'),
+                        html.Div([
+                                html.Div(dcc.Graph(id='scatter_plot_enrollment'), className="six columns"),
+                                html.Div(dcc.Graph(id='scatter_plot_enrollment_ct'), className="six columns"),
+                            ], className="row"
+                        ),
                     ],
                 ),
             ],
@@ -339,15 +350,21 @@ def update_items_dropdown(selected_biomarker):
     Input('gene-select', 'value'),
     )
 def update_figure(selected_biomarker,selected_specimen,selected_gene):
-    filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="symptom onset")]
+    filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="symptom onset") & (df_analyte["unit"]!="cycle threshold")]
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
     fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=True, 
-                    color="ID", title=selected_biomarker + " Shedding Data for " + selected_specimen.capitalize() + " Samples", 
-                    labels={"time": "Days after Symptom Onset", "value": "Viral Load (gc/mL or gc/dry gram)", "ID": "Study"})
+                    color="ID", #title=selected_biomarker + " Shedding Data for " + selected_specimen.capitalize() + " Samples", 
+                    labels={"time": "Days after Symptom Onset", "value": "Viral Load (gc/mL or gc/gram or gc/swab)", "ID": "Study"})
 
-    fig.update_layout(transition_duration=500)
+    fig.update_layout(transition_duration=500, legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1)
+    )
 
     return fig
 
@@ -358,15 +375,21 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     Input('gene-select', 'value'),
     )
 def update_figure(selected_biomarker,selected_specimen,selected_gene):
-    filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="confirmation date")]
+    filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="confirmation date") & (df_analyte["unit"]!="cycle threshold")]
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
     fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=True, 
                     color="ID",
-                    labels={"time": "Days after Confirmation", "value": "Viral Load (gc/mL or gc/dry gram)", "ID": "Study"})
+                    labels={"time": "Days after Confirmation", "value": "Viral Load (gc/mL or gc/gram or gc/swab)", "ID": "Study"})
 
-    fig.update_layout(transition_duration=500)
+    fig.update_layout(transition_duration=500, legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1)
+    )
 
     return fig
 
@@ -377,15 +400,96 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     Input('gene-select', 'value'),
     )
 def update_figure(selected_biomarker,selected_specimen,selected_gene):
-    filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="enrollment")]
+    filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="enrollment") & (df_analyte["unit"]!="cycle threshold")]
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
     fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=True, 
                     color="ID", 
-                    labels={"time": "Days after Enrollment", "value": "Viral Load (gc/mL or gc/dry gram or gc/swab)", "ID": "Study"})
+                    labels={"time": "Days after Enrollment", "value": "Viral Load (gc/mL or gc/gram or gc/swab)", "ID": "Study"})
 
-    fig.update_layout(transition_duration=500)
+    fig.update_layout(transition_duration=500, legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1)
+    )
+
+    return fig
+
+@callback(
+    Output('scatter_plot_symptom_onset_ct', 'figure'),
+    Input('biomarker-select', 'value'),
+    Input('specimen-select', 'value'),
+    Input('gene-select', 'value'),
+    )
+def update_figure(selected_biomarker,selected_specimen,selected_gene):
+    filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="symptom onset") & (df_analyte["unit"]=="cycle threshold")]
+    filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
+    filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
+
+    fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=False, 
+                    color="ID",
+                    labels={"time": "Days after Symptom Onset", "value": "Ct value", "ID": "Study"})
+
+    fig.update_layout(transition_duration=500, yaxis_autorange="reversed",legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1)
+    )
+
+    return fig
+
+@callback(
+    Output('scatter_plot_confirmation_ct', 'figure'),
+    Input('biomarker-select', 'value'),
+    Input('specimen-select', 'value'),
+    Input('gene-select', 'value'),
+    )
+def update_figure(selected_biomarker,selected_specimen,selected_gene):
+    filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="confirmation date") & (df_analyte["unit"]=="cycle threshold")]
+    filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
+    filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
+
+    fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=False, 
+                    color="ID",
+                    labels={"time": "Days after Confirmation", "value": "Ct value", "ID": "Study"})
+
+    fig.update_layout(transition_duration=500, yaxis_autorange="reversed",legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1)
+    )
+
+    return fig
+
+@callback(
+    Output('scatter_plot_enrollment_ct', 'figure'),
+    Input('biomarker-select', 'value'),
+    Input('specimen-select', 'value'),
+    Input('gene-select', 'value'),
+    )
+def update_figure(selected_biomarker,selected_specimen,selected_gene):
+    filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="enrollment") & (df_analyte["unit"]=="cycle threshold")]
+    filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
+    filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
+
+    fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=False, 
+                    color="ID", 
+                    labels={"time": "Days after Enrollment", "value": "Ct value", "ID": "Study"})
+
+    fig.update_layout(transition_duration=500, yaxis_autorange="reversed",legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1)
+    )
 
     return fig
 
