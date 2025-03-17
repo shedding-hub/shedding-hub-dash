@@ -354,10 +354,44 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=True, 
-                    color="ID", #title=selected_biomarker + " Shedding Data for " + selected_specimen.capitalize() + " Samples", 
-                    labels={"time": "Days after Symptom Onset", "value": "Viral Load (gc/mL or gc/gram or gc/swab)", "ID": "Study"})
+    min_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].min()
+    filtered_df_analyte = filtered_df_analyte.merge(min_measurement, on=["ID","analyte"])
+    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'min_value'})
 
+    #replace negative values with LOQ, LOD, and min value;
+    def find_negative_replacement(row):
+        if row['LOQ'] != 'unknown':
+            return row['LOQ']
+        elif row['LOD'] != 'unknown':
+            return row['LOD']
+        else:
+            return row['min_value']
+        
+    filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["pos"] = "positive"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
+                    color="ID", symbol="pos", #title=selected_biomarker + " Shedding Data for " + selected_specimen.capitalize() + " Samples", 
+                    labels={"time": "Days after Symptom Onset", "value_w_replacement": "Viral Load (gc/mL or gc/gram or gc/swab)", "ID": "Study"})
+    def style_trace(trace):
+        if "positive" in trace.name:
+            trace.showlegend = True
+            trace.marker.symbol = "circle"
+        if "negative" in trace.name:
+            trace.showlegend = False
+            trace.marker.symbol = "x"
+        trace.name = trace.name.split(",")[-2]
+        trace.legendgroup = trace.legendgroup.split(",")[-2]
+
+    fig.for_each_trace(style_trace)
+    fig.update_layout(legend_title_text = 'Study')
     fig.update_layout(transition_duration=500, legend=dict(
         orientation="h",
         yanchor="bottom",
@@ -379,10 +413,44 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=True, 
-                    color="ID",
-                    labels={"time": "Days after Confirmation", "value": "Viral Load (gc/mL or gc/gram or gc/swab)", "ID": "Study"})
+    min_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].min()
+    filtered_df_analyte = filtered_df_analyte.merge(min_measurement, on=["ID","analyte"])
+    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'min_value'})
 
+    #replace negative values with LOQ, LOD, and min value;
+    def find_negative_replacement(row):
+        if row['LOQ'] != 'unknown':
+            return row['LOQ']
+        elif row['LOD'] != 'unknown':
+            return row['LOD']
+        else:
+            return row['min_value']
+        
+    filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["pos"] = "positive"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
+                    color="ID", symbol="pos",
+                    labels={"time": "Days after Confirmation", "value_w_replacement": "Viral Load (gc/mL or gc/gram or gc/swab)", "ID": "Study"})
+    def style_trace(trace):
+        if "positive" in trace.name:
+            trace.showlegend = True
+            trace.marker.symbol = "circle"
+        if "negative" in trace.name:
+            trace.showlegend = False
+            trace.marker.symbol = "x"
+        trace.name = trace.name.split(",")[-2]
+        trace.legendgroup = trace.legendgroup.split(",")[-2]
+
+    fig.for_each_trace(style_trace)
+    fig.update_layout(legend_title_text = 'Study')
     fig.update_layout(transition_duration=500, legend=dict(
         orientation="h",
         yanchor="bottom",
@@ -404,10 +472,44 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=True, 
-                    color="ID", 
-                    labels={"time": "Days after Enrollment", "value": "Viral Load (gc/mL or gc/gram or gc/swab)", "ID": "Study"})
+    min_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].min()
+    filtered_df_analyte = filtered_df_analyte.merge(min_measurement, on=["ID","analyte"])
+    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'min_value'})
 
+    #replace negative values with LOQ, LOD, and min value;
+    def find_negative_replacement(row):
+        if row['LOQ'] != 'unknown':
+            return row['LOQ']
+        elif row['LOD'] != 'unknown':
+            return row['LOD']
+        else:
+            return row['min_value']
+        
+    filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["pos"] = "positive"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
+                    color="ID", symbol="pos",
+                    labels={"time": "Days after Enrollment", "value_w_replacement": "Viral Load (gc/mL or gc/gram or gc/swab)", "ID": "Study"})
+    def style_trace(trace):
+        if "positive" in trace.name:
+            trace.showlegend = True
+            trace.marker.symbol = "circle"
+        if "negative" in trace.name:
+            trace.showlegend = False
+            trace.marker.symbol = "x"
+        trace.name = trace.name.split(",")[-2]
+        trace.legendgroup = trace.legendgroup.split(",")[-2]
+
+    fig.for_each_trace(style_trace)
+    fig.update_layout(legend_title_text = 'Study')
     fig.update_layout(transition_duration=500, legend=dict(
         orientation="h",
         yanchor="bottom",
@@ -429,10 +531,44 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=False, 
-                    color="ID",
-                    labels={"time": "Days after Symptom Onset", "value": "Ct value", "ID": "Study"})
+    max_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].max()
+    filtered_df_analyte = filtered_df_analyte.merge(max_measurement, on=["ID","analyte"])
+    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'max_value'})
 
+    #replace negative values with LOQ, LOD, and min value;
+    def find_negative_replacement(row):
+        if row['LOQ'] != 'unknown':
+            return row['LOQ']
+        elif row['LOD'] != 'unknown':
+            return row['LOD']
+        else:
+            return row['max_value']
+        
+    filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["pos"] = "positive"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
+                    color="ID", symbol="pos",
+                    labels={"time": "Days after Symptom Onset", "value_w_replacement": "Ct value", "ID": "Study"})
+    def style_trace(trace):
+        if "positive" in trace.name:
+            trace.showlegend = True
+            trace.marker.symbol = "circle"
+        if "negative" in trace.name:
+            trace.showlegend = False
+            trace.marker.symbol = "x"
+        trace.name = trace.name.split(",")[-2]
+        trace.legendgroup = trace.legendgroup.split(",")[-2]
+
+    fig.for_each_trace(style_trace)
+    fig.update_layout(legend_title_text = 'Study')
     fig.update_layout(transition_duration=500, yaxis_autorange="reversed",legend=dict(
         orientation="h",
         yanchor="bottom",
@@ -454,10 +590,44 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=False, 
-                    color="ID",
-                    labels={"time": "Days after Confirmation", "value": "Ct value", "ID": "Study"})
+    max_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].max()
+    filtered_df_analyte = filtered_df_analyte.merge(max_measurement, on=["ID","analyte"])
+    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'max_value'})
 
+    #replace negative values with LOQ, LOD, and min value;
+    def find_negative_replacement(row):
+        if row['LOQ'] != 'unknown':
+            return row['LOQ']
+        elif row['LOD'] != 'unknown':
+            return row['LOD']
+        else:
+            return row['max_value']
+        
+    filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["pos"] = "positive"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
+                    color="ID", symbol="pos",
+                    labels={"time": "Days after Confirmation", "value_w_replacement": "Ct value", "ID": "Study"})
+    def style_trace(trace):
+        if "positive" in trace.name:
+            trace.showlegend = True
+            trace.marker.symbol = "circle"
+        if "negative" in trace.name:
+            trace.showlegend = False
+            trace.marker.symbol = "x"
+        trace.name = trace.name.split(",")[-2]
+        trace.legendgroup = trace.legendgroup.split(",")[-2]
+
+    fig.for_each_trace(style_trace)
+    fig.update_layout(legend_title_text = 'Study')
     fig.update_layout(transition_duration=500, yaxis_autorange="reversed",legend=dict(
         orientation="h",
         yanchor="bottom",
@@ -479,10 +649,44 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    fig = px.scatter(filtered_df_measurement, x='time', y='value', log_y=False, 
-                    color="ID", 
-                    labels={"time": "Days after Enrollment", "value": "Ct value", "ID": "Study"})
+    max_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].max()
+    filtered_df_analyte = filtered_df_analyte.merge(max_measurement, on=["ID","analyte"])
+    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'max_value'})
 
+    #replace negative values with LOQ, LOD, and min value;
+    def find_negative_replacement(row):
+        if row['LOQ'] != 'unknown':
+            return row['LOQ']
+        elif row['LOD'] != 'unknown':
+            return row['LOD']
+        else:
+            return row['max_value']
+        
+    filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["pos"] = "positive"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
+    filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
+    filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
+                    color="ID", symbol="pos",
+                    labels={"time": "Days after Enrollment", "value_w_replacement": "Ct value", "ID": "Study"})
+    def style_trace(trace):
+        if "positive" in trace.name:
+            trace.showlegend = True
+            trace.marker.symbol = "circle"
+        if "negative" in trace.name:
+            trace.showlegend = False
+            trace.marker.symbol = "x"
+        trace.name = trace.name.split(",")[-2]
+        trace.legendgroup = trace.legendgroup.split(",")[-2]
+
+    fig.for_each_trace(style_trace)
+    fig.update_layout(legend_title_text = 'Study')
     fig.update_layout(transition_duration=500, yaxis_autorange="reversed",legend=dict(
         orientation="h",
         yanchor="bottom",

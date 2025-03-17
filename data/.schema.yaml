@@ -67,6 +67,7 @@ $defs:
           - crAssphage
           - influenza
           - sapovirus
+          - SARS
       gene_target:
         description: The gene being targeted in qPCR or ddPCR if a genomic biomarker.
           This field should be left empty for non-genomic biomarkers, e.g., drug
@@ -81,6 +82,7 @@ $defs:
           - gc/swab
           - gc/wet gram
           - cycle threshold
+          - pfu/mL
       reference_event:
         description: Event used as reference for `time` fields of measurements.
         type: string
@@ -88,6 +90,7 @@ $defs:
           - symptom onset
           - confirmation date
           - enrollment
+          - hospital admission
     required:
       - biomarker
       - description
