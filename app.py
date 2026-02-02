@@ -28,10 +28,10 @@ def list_join(x):
     
 ### Incorporate data
 # recursive copy all yaml files from the shedding-hub repository;
-destination = Path.cwd()/"data"
-destination.mkdir(exist_ok=True, parents=True)
-fs = fsspec.filesystem("github", org="shedding-hub", repo="shedding-hub",username=GITHUB_USERNAME,token=GITHUB_TOKEN)
-fs.get(fs.glob("data/**/*.yaml"), destination.as_posix(), recursive=True)
+# destination = Path.cwd()/"data"
+# destination.mkdir(exist_ok=True, parents=True)
+# fs = fsspec.filesystem("github", org="shedding-hub", repo="shedding-hub",username=GITHUB_USERNAME,token=GITHUB_TOKEN)
+# fs.get(fs.glob("data/**/*.yaml"), destination.as_posix(), recursive=True)
 
 # load the yaml;
 list_file = glob.glob("data/*.yaml")
@@ -350,32 +350,61 @@ def update_items_dropdown(selected_biomarker):
     Input('gene-select', 'value'),
     )
 def update_figure(selected_biomarker,selected_specimen,selected_gene):
+    # Handle None or empty gene selection
+    if not selected_gene or not selected_biomarker or not selected_specimen:
+        return {}
+
     filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="symptom onset") & (df_analyte["unit"]!="cycle threshold")]
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    min_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].min()
-    filtered_df_analyte = filtered_df_analyte.merge(min_measurement, on=["ID","analyte"])
-    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'min_value'})
+    # Convert values to numeric before computing min
+    temp_df = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].copy()
+    if len(temp_df) > 0:
+        temp_df["value"] = pd.to_numeric(temp_df["value"], errors='coerce')
+        min_measurement = temp_df.groupby(["ID","analyte"])["value"].min()
+        filtered_df_analyte = filtered_df_analyte.merge(min_measurement, on=["ID","analyte"], how='left')
+        filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'min_value'})
+    else:
+        filtered_df_analyte['min_value'] = None
 
     #replace negative values with LOQ, LOD, and min value;
     def find_negative_replacement(row):
-        if row['LOQ'] != 'unknown':
+        if row['LOQ'] != 'unknown' and pd.notna(row['LOQ']):
             return row['LOQ']
-        elif row['LOD'] != 'unknown':
+        elif row['LOD'] != 'unknown' and pd.notna(row['LOD']):
             return row['LOD']
-        else:
+        elif pd.notna(row.get('min_value')):
             return row['min_value']
+        else:
+            return None
         
     filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    # Convert neg_replacement_value to numeric
+    filtered_df_analyte['neg_replacement_value'] = pd.to_numeric(filtered_df_analyte['neg_replacement_value'], errors='coerce')
+
     filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
-    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+
+    # Convert time and value to numeric first
+    filtered_df_measurement["time"] = pd.to_numeric(filtered_df_measurement["time"], errors='coerce')
+    filtered_df_measurement["value_numeric"] = pd.to_numeric(filtered_df_measurement["value"], errors='coerce')
+
+    # Create value_w_replacement column
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value_numeric"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+
     filtered_df_measurement["pos"] = "positive"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
     filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    # Drop rows with NaN in critical columns
+    filtered_df_measurement = filtered_df_measurement.dropna(subset=['time', 'value_w_replacement'])
+
+    # Check if we have data to plot
+    if len(filtered_df_measurement) == 0:
+        return {}
 
     fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
                     color="ID", symbol="pos", #title=selected_biomarker + " Shedding Data for " + selected_specimen.capitalize() + " Samples", 
@@ -409,32 +438,61 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     Input('gene-select', 'value'),
     )
 def update_figure(selected_biomarker,selected_specimen,selected_gene):
+    # Handle None or empty gene selection
+    if not selected_gene or not selected_biomarker or not selected_specimen:
+        return {}
+
     filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="confirmation date") & (df_analyte["unit"]!="cycle threshold")]
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    min_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].min()
-    filtered_df_analyte = filtered_df_analyte.merge(min_measurement, on=["ID","analyte"])
-    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'min_value'})
+    # Convert values to numeric before computing min
+    temp_df = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].copy()
+    if len(temp_df) > 0:
+        temp_df["value"] = pd.to_numeric(temp_df["value"], errors='coerce')
+        min_measurement = temp_df.groupby(["ID","analyte"])["value"].min()
+        filtered_df_analyte = filtered_df_analyte.merge(min_measurement, on=["ID","analyte"], how='left')
+        filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'min_value'})
+    else:
+        filtered_df_analyte['min_value'] = None
 
     #replace negative values with LOQ, LOD, and min value;
     def find_negative_replacement(row):
-        if row['LOQ'] != 'unknown':
+        if row['LOQ'] != 'unknown' and pd.notna(row['LOQ']):
             return row['LOQ']
-        elif row['LOD'] != 'unknown':
+        elif row['LOD'] != 'unknown' and pd.notna(row['LOD']):
             return row['LOD']
-        else:
+        elif pd.notna(row.get('min_value')):
             return row['min_value']
+        else:
+            return None
         
     filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    # Convert neg_replacement_value to numeric
+    filtered_df_analyte['neg_replacement_value'] = pd.to_numeric(filtered_df_analyte['neg_replacement_value'], errors='coerce')
+
     filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
-    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+
+    # Convert time and value to numeric first
+    filtered_df_measurement["time"] = pd.to_numeric(filtered_df_measurement["time"], errors='coerce')
+    filtered_df_measurement["value_numeric"] = pd.to_numeric(filtered_df_measurement["value"], errors='coerce')
+
+    # Create value_w_replacement column
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value_numeric"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+
     filtered_df_measurement["pos"] = "positive"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
     filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    # Drop rows with NaN in critical columns
+    filtered_df_measurement = filtered_df_measurement.dropna(subset=['time', 'value_w_replacement'])
+
+    # Check if we have data to plot
+    if len(filtered_df_measurement) == 0:
+        return {}
 
     fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
                     color="ID", symbol="pos",
@@ -468,32 +526,61 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     Input('gene-select', 'value'),
     )
 def update_figure(selected_biomarker,selected_specimen,selected_gene):
+    # Handle None or empty gene selection
+    if not selected_gene or not selected_biomarker or not selected_specimen:
+        return {}
+
     filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="enrollment") & (df_analyte["unit"]!="cycle threshold")]
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    min_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].min()
-    filtered_df_analyte = filtered_df_analyte.merge(min_measurement, on=["ID","analyte"])
-    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'min_value'})
+    # Convert values to numeric before computing min
+    temp_df = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].copy()
+    if len(temp_df) > 0:
+        temp_df["value"] = pd.to_numeric(temp_df["value"], errors='coerce')
+        min_measurement = temp_df.groupby(["ID","analyte"])["value"].min()
+        filtered_df_analyte = filtered_df_analyte.merge(min_measurement, on=["ID","analyte"], how='left')
+        filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'min_value'})
+    else:
+        filtered_df_analyte['min_value'] = None
 
     #replace negative values with LOQ, LOD, and min value;
     def find_negative_replacement(row):
-        if row['LOQ'] != 'unknown':
+        if row['LOQ'] != 'unknown' and pd.notna(row['LOQ']):
             return row['LOQ']
-        elif row['LOD'] != 'unknown':
+        elif row['LOD'] != 'unknown' and pd.notna(row['LOD']):
             return row['LOD']
-        else:
+        elif pd.notna(row.get('min_value')):
             return row['min_value']
+        else:
+            return None
         
     filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    # Convert neg_replacement_value to numeric
+    filtered_df_analyte['neg_replacement_value'] = pd.to_numeric(filtered_df_analyte['neg_replacement_value'], errors='coerce')
+
     filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
-    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+
+    # Convert time and value to numeric first
+    filtered_df_measurement["time"] = pd.to_numeric(filtered_df_measurement["time"], errors='coerce')
+    filtered_df_measurement["value_numeric"] = pd.to_numeric(filtered_df_measurement["value"], errors='coerce')
+
+    # Create value_w_replacement column
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value_numeric"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+
     filtered_df_measurement["pos"] = "positive"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
     filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    # Drop rows with NaN in critical columns
+    filtered_df_measurement = filtered_df_measurement.dropna(subset=['time', 'value_w_replacement'])
+
+    # Check if we have data to plot
+    if len(filtered_df_measurement) == 0:
+        return {}
 
     fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
                     color="ID", symbol="pos",
@@ -527,32 +614,61 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     Input('gene-select', 'value'),
     )
 def update_figure(selected_biomarker,selected_specimen,selected_gene):
+    # Handle None or empty gene selection
+    if not selected_gene or not selected_biomarker or not selected_specimen:
+        return {}
+
     filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="symptom onset") & (df_analyte["unit"]=="cycle threshold")]
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    max_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].max()
-    filtered_df_analyte = filtered_df_analyte.merge(max_measurement, on=["ID","analyte"])
-    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'max_value'})
+    # Convert values to numeric before computing max
+    temp_df = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].copy()
+    if len(temp_df) > 0:
+        temp_df["value"] = pd.to_numeric(temp_df["value"], errors='coerce')
+        max_measurement = temp_df.groupby(["ID","analyte"])["value"].max()
+        filtered_df_analyte = filtered_df_analyte.merge(max_measurement, on=["ID","analyte"], how='left')
+        filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'max_value'})
+    else:
+        filtered_df_analyte['max_value'] = None
 
-    #replace negative values with LOQ, LOD, and min value;
+    #replace negative values with LOQ, LOD, and max value;
     def find_negative_replacement(row):
-        if row['LOQ'] != 'unknown':
+        if row['LOQ'] != 'unknown' and pd.notna(row['LOQ']):
             return row['LOQ']
-        elif row['LOD'] != 'unknown':
+        elif row['LOD'] != 'unknown' and pd.notna(row['LOD']):
             return row['LOD']
-        else:
+        elif pd.notna(row.get('max_value')):
             return row['max_value']
+        else:
+            return None
         
     filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    # Convert neg_replacement_value to numeric
+    filtered_df_analyte['neg_replacement_value'] = pd.to_numeric(filtered_df_analyte['neg_replacement_value'], errors='coerce')
+
     filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
-    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+
+    # Convert time and value to numeric first
+    filtered_df_measurement["time"] = pd.to_numeric(filtered_df_measurement["time"], errors='coerce')
+    filtered_df_measurement["value_numeric"] = pd.to_numeric(filtered_df_measurement["value"], errors='coerce')
+
+    # Create value_w_replacement column
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value_numeric"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+
     filtered_df_measurement["pos"] = "positive"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
     filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    # Drop rows with NaN in critical columns
+    filtered_df_measurement = filtered_df_measurement.dropna(subset=['time', 'value_w_replacement'])
+
+    # Check if we have data to plot
+    if len(filtered_df_measurement) == 0:
+        return {}
 
     fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
                     color="ID", symbol="pos",
@@ -586,32 +702,61 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     Input('gene-select', 'value'),
     )
 def update_figure(selected_biomarker,selected_specimen,selected_gene):
+    # Handle None or empty gene selection
+    if not selected_gene or not selected_biomarker or not selected_specimen:
+        return {}
+
     filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="confirmation date") & (df_analyte["unit"]=="cycle threshold")]
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    max_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].max()
-    filtered_df_analyte = filtered_df_analyte.merge(max_measurement, on=["ID","analyte"])
-    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'max_value'})
+    # Convert values to numeric before computing max
+    temp_df = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].copy()
+    if len(temp_df) > 0:
+        temp_df["value"] = pd.to_numeric(temp_df["value"], errors='coerce')
+        max_measurement = temp_df.groupby(["ID","analyte"])["value"].max()
+        filtered_df_analyte = filtered_df_analyte.merge(max_measurement, on=["ID","analyte"], how='left')
+        filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'max_value'})
+    else:
+        filtered_df_analyte['max_value'] = None
 
-    #replace negative values with LOQ, LOD, and min value;
+    #replace negative values with LOQ, LOD, and max value;
     def find_negative_replacement(row):
-        if row['LOQ'] != 'unknown':
+        if row['LOQ'] != 'unknown' and pd.notna(row['LOQ']):
             return row['LOQ']
-        elif row['LOD'] != 'unknown':
+        elif row['LOD'] != 'unknown' and pd.notna(row['LOD']):
             return row['LOD']
-        else:
+        elif pd.notna(row.get('max_value')):
             return row['max_value']
+        else:
+            return None
         
     filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    # Convert neg_replacement_value to numeric
+    filtered_df_analyte['neg_replacement_value'] = pd.to_numeric(filtered_df_analyte['neg_replacement_value'], errors='coerce')
+
     filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
-    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+
+    # Convert time and value to numeric first
+    filtered_df_measurement["time"] = pd.to_numeric(filtered_df_measurement["time"], errors='coerce')
+    filtered_df_measurement["value_numeric"] = pd.to_numeric(filtered_df_measurement["value"], errors='coerce')
+
+    # Create value_w_replacement column
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value_numeric"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+
     filtered_df_measurement["pos"] = "positive"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
     filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    # Drop rows with NaN in critical columns
+    filtered_df_measurement = filtered_df_measurement.dropna(subset=['time', 'value_w_replacement'])
+
+    # Check if we have data to plot
+    if len(filtered_df_measurement) == 0:
+        return {}
 
     fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
                     color="ID", symbol="pos",
@@ -645,32 +790,61 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
     Input('gene-select', 'value'),
     )
 def update_figure(selected_biomarker,selected_specimen,selected_gene):
+    # Handle None or empty gene selection
+    if not selected_gene or not selected_biomarker or not selected_specimen:
+        return {}
+
     filtered_df_analyte = df_analyte.loc[(df_analyte["biomarker"]==selected_biomarker) & (df_analyte["specimen"]==selected_specimen) & (df_analyte["gene_target"].isin(selected_gene)) & (df_analyte["reference_event"]=="enrollment") & (df_analyte["unit"]=="cycle threshold")]
     filtered_df_participant = df_participant.loc[df_participant['ID'].isin(filtered_df_analyte['ID'])]
     filtered_df_measurement = df_measurement.loc[(df_measurement['ID']+df_measurement['analyte']).isin(filtered_df_analyte['ID']+filtered_df_analyte['analyte'])]
 
-    max_measurement = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].groupby(["ID","analyte"])["value"].max()
-    filtered_df_analyte = filtered_df_analyte.merge(max_measurement, on=["ID","analyte"])
-    filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'max_value'})
+    # Convert values to numeric before computing max
+    temp_df = filtered_df_measurement.loc[(filtered_df_measurement["value"]!="negative") & (filtered_df_measurement["value"]!="positive")].copy()
+    if len(temp_df) > 0:
+        temp_df["value"] = pd.to_numeric(temp_df["value"], errors='coerce')
+        max_measurement = temp_df.groupby(["ID","analyte"])["value"].max()
+        filtered_df_analyte = filtered_df_analyte.merge(max_measurement, on=["ID","analyte"], how='left')
+        filtered_df_analyte = filtered_df_analyte.rename(columns={'value': 'max_value'})
+    else:
+        filtered_df_analyte['max_value'] = None
 
-    #replace negative values with LOQ, LOD, and min value;
+    #replace negative values with LOQ, LOD, and max value;
     def find_negative_replacement(row):
-        if row['LOQ'] != 'unknown':
+        if row['LOQ'] != 'unknown' and pd.notna(row['LOQ']):
             return row['LOQ']
-        elif row['LOD'] != 'unknown':
+        elif row['LOD'] != 'unknown' and pd.notna(row['LOD']):
             return row['LOD']
-        else:
+        elif pd.notna(row.get('max_value')):
             return row['max_value']
+        else:
+            return None
         
     filtered_df_analyte['neg_replacement_value'] = filtered_df_analyte.apply(find_negative_replacement, axis=1)
+    # Convert neg_replacement_value to numeric
+    filtered_df_analyte['neg_replacement_value'] = pd.to_numeric(filtered_df_analyte['neg_replacement_value'], errors='coerce')
+
     filtered_df_measurement = filtered_df_measurement.merge(filtered_df_analyte[["ID","analyte",'neg_replacement_value']], on=["ID","analyte"])
-    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value"]
+
+    # Convert time and value to numeric first
+    filtered_df_measurement["time"] = pd.to_numeric(filtered_df_measurement["time"], errors='coerce')
+    filtered_df_measurement["value_numeric"] = pd.to_numeric(filtered_df_measurement["value"], errors='coerce')
+
+    # Create value_w_replacement column
+    filtered_df_measurement["value_w_replacement"] = filtered_df_measurement["value_numeric"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","neg_replacement_value"]
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","value_w_replacement"] = filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","neg_replacement_value"] #currently non-quantifiable positive were also treated as negative;
+
     filtered_df_measurement["pos"] = "positive"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="negative","pos"] = "negative"
     filtered_df_measurement.loc[filtered_df_measurement["value"]=="positive","pos"] = "negative" #currently non-quantifiable positive were also treated as negative;
     filtered_df_measurement["subj_ID"] = filtered_df_measurement["ID"] + filtered_df_measurement["participant_ID"].astype(str)
+
+    # Drop rows with NaN in critical columns
+    filtered_df_measurement = filtered_df_measurement.dropna(subset=['time', 'value_w_replacement'])
+
+    # Check if we have data to plot
+    if len(filtered_df_measurement) == 0:
+        return {}
 
     fig = px.scatter(filtered_df_measurement, x='time', y='value_w_replacement', log_y=True, 
                     color="ID", symbol="pos",
@@ -699,5 +873,5 @@ def update_figure(selected_biomarker,selected_specimen,selected_gene):
 
 ### Run the app
 if __name__ == '__main__':
-    app.run(host= '0.0.0.0', debug=True) # for app deployment at render.com;
-#    app.run(debug=True) # for local development;
+    # app.run(host= '0.0.0.0', debug=True) # for app deployment at render.com;
+   app.run(debug=True) # for local development;

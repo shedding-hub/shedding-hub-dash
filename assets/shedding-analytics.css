@@ -195,3 +195,205 @@ H5, H3 {
     }
 
 }
+
+
+/* ==========================================================================
+   New Dashboard Styles
+   ========================================================================== */
+
+/* Modal */
+.modal-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    z-index: 1000;
+    min-width: 400px;
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 999;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: space-between;
+}
+
+.modal-input {
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+.modal-radio {
+    margin-bottom: 15px;
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: #119DFF;
+    color: white;
+    border: 1px solid #119DFF;
+}
+
+.btn-primary:hover {
+    background-color: #0d8ae0;
+    border-color: #0d8ae0;
+    color: white;
+}
+
+.btn-full-width {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.btn-close-tab {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 5px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn-close-tab:hover {
+    background-color: #c82333;
+    color: white;
+}
+
+/* Tab content */
+.tab-content-wrapper {
+    padding: 20px;
+}
+
+.tab-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tab-header h4 {
+    margin: 0;
+}
+
+.plot-type-dropdown {
+    margin-bottom: 20px;
+}
+
+.plot-container {
+    text-align: center;
+}
+
+/* Plot output */
+.plot-img {
+    max-width: 100%;
+    height: auto;
+}
+
+.plot-description {
+    color: #666;
+    font-size: 13px;
+    font-style: italic;
+    margin-top: 8px;
+}
+
+.error-message {
+    color: red;
+}
+
+/* Welcome page */
+.welcome-overview {
+    padding: 20px;
+}
+
+.summary-cards {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+
+.summary-card {
+    background-color: #f0f8ff;
+    border-radius: 8px;
+    padding: 15px 25px;
+    text-align: center;
+    min-width: 120px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.summary-card h3 {
+    margin: 0;
+    color: #119DFF;
+}
+
+.summary-card p {
+    margin: 0;
+    font-size: 13px;
+    color: #666;
+}
+
+/* Dataset overview table */
+.dataset-table-wrapper {
+    max-height: 500px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.dataset-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.dataset-table thead th {
+    position: sticky;
+    top: 0;
+    background-color: #119DFF;
+    color: white;
+    padding: 8px 10px;
+    text-align: left;
+}
+
+.dataset-table tbody td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.dataset-table tbody td.td-center {
+    text-align: center;
+}
+
+.dataset-table tbody td.td-bold {
+    font-weight: bold;
+}
+
+.dataset-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+/* Statistics tables */
+.stats-table-wrapper {
+    overflow-x: auto;
+}
+
+.stats-table-wrapper .table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.stats-table-wrapper .table-striped tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
