@@ -47,10 +47,9 @@ H5, H3 {
 
 #left-column {
     margin-top: 20px;
-    padding: 0rem 2rem;
+    padding: 0rem 1rem;
     display: flex;
     flex-direction: column;
-    align-items: center;
     min-height: calc(100vh - 5.5rem);
 }
 
@@ -81,7 +80,7 @@ H5, H3 {
     text-align: justify;
 }
 
-#control-card > p {
+#control-card > h6 {
     font-weight: bold;
 }
 
@@ -389,11 +388,112 @@ H5, H3 {
     overflow-x: auto;
 }
 
-.stats-table-wrapper .table {
+.stats-table {
     width: 100%;
     border-collapse: collapse;
+    font-size: 13px;
 }
 
-.stats-table-wrapper .table-striped tr:nth-child(even) {
+.stats-table thead th {
+    background-color: #119DFF;
+    color: white;
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+}
+
+.stats-table tbody td {
+    padding: 6px 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.stats-table tbody tr:nth-child(even) {
     background-color: #f9f9f9;
+}
+
+.stats-table tbody tr:hover {
+    background-color: #e8f4fd;
+}
+
+/* Dataset browser (left panel) */
+.dataset-browser {
+    max-height: calc(100vh - 220px);
+    overflow-y: auto;
+}
+
+.browser-hint {
+    font-size: 12px;
+    color: #999;
+    margin-bottom: 10px;
+}
+
+.browser-pathogen-group {
+    margin-bottom: 12px;
+}
+
+.browser-pathogen-header {
+    background-color: #e8f4fd;
+    padding: 5px 10px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+
+.browser-study-list {
+    padding-left: 6px;
+}
+
+button.browser-study-item {
+    display: block;
+    width: 100%;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 3px;
+    color: #333;
+    background: none;
+    border: none;
+    text-align: left;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: normal;
+    height: auto;
+    line-height: 1.6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: 0;
+}
+
+button.browser-study-item:hover {
+    background-color: #d0eaff;
+    color: #0d6efd;
+    border: none;
+}
+
+/* Per-tab inline filter bar */
+.tab-filter-bar {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 10px 0;
+    align-items: flex-end;
+}
+
+.tab-filter-item {
+    flex: 1;
+    min-width: 160px;
+}
+
+.tab-filter-item label {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 2px;
+    display: block;
+}
+
+.tab-filter-radio {
+    display: flex;
+    gap: 12px;
+    padding-top: 6px;
 }
