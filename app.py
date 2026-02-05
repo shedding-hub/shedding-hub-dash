@@ -15,9 +15,6 @@ import pandas as pd
 import json
 import sys
 
-# Add the parent directory to path to import shedding_hub
-sys.path.insert(0, r"C:\Users\Haili\OneDrive - Emory University\EPI Class\Liuhua Shi RA\Shedding_hub\09072024_Training\Environment\shedding-hub")
-
 # Import shedding_hub package functions
 try:
     from shedding_hub import load_dataset
@@ -1261,4 +1258,4 @@ def browser_create_tab(n_clicks_list, current_tabs, tab_configs, tab_counter):
 ### Run the app
 if __name__ == '__main__':
     # Run the app (data already loaded during initialization)
-    app.run(debug=True, use_reloader=False)
+    app.run(host= '0.0.0.0', debug=True, use_reloader=False)
