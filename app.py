@@ -413,9 +413,6 @@ app.layout = html.Div(
             ],
         ),
 
-        # Banner
-        create_banner(),
-
         # Left column - Controls
         html.Div(
             id="left-column",
