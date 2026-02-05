@@ -3,12 +3,12 @@ $defs:
   negative_positive_number:
     description: >
       A quantitative value, `positive` result above limit of detection but below limit
-      of quantification, or `negative` result below the limit of detection.
+      of quantification, `inconclusive` result not conclusive for test output, or `negative` result below the limit of detection.
     oneOf:
       - type: number
         exclusiveMinimum: 0 # Zero should be coded as `negative`.
       - type: string
-        enum: [positive, negative]
+        enum: [positive, negative, inconclusive]
   specimen_type_enum:
     type: string
     enum:
@@ -16,11 +16,14 @@ $defs:
       - sputum
       - urine
       - plasma
-      - throat_swab
       - oropharyngeal_swab
       - nasopharyngeal_swab
+      - anterior_nares_swab
       - saliva
+      - rectal_swab
       - unknown
+      - bronchoalveolar_lavage_fluid
+      - serum
   analyte_specification:
     description: Specification of an analyte.
     type: object
@@ -67,22 +70,28 @@ $defs:
           - crAssphage
           - influenza
           - sapovirus
+          - norovirus
           - SARS
       gene_target:
         description: The gene being targeted in qPCR or ddPCR if a genomic biomarker.
           This field should be left empty for non-genomic biomarkers, e.g., drug
           metabolites.
         type: string
+      genotype:
+        description: Genotype of the pathogen for the participant.
+        type: string
       unit:
         description: Units in which measurements are reported.
-        type: string
-        enum:
-          - gc/dry gram
-          - gc/mL
-          - gc/swab
-          - gc/wet gram
-          - cycle threshold
-          - pfu/mL
+        oneOf:
+          - type: string
+            enum:
+              - gc/dry gram
+              - gc/mL
+              - gc/swab
+              - gc/wet gram
+              - cycle threshold
+              - pfu/mL
+          - type: "null"
       reference_event:
         description: Event used as reference for `time` fields of measurements.
         type: string
@@ -182,9 +191,30 @@ properties:
                 - type: boolean
                 - type: string
                   constant: unknown
+            hospitalized:
+              description: If the participant was hospitalized.
+              oneOf:
+                - type: boolean
+                - type: string
+                  constant: unknown              
             lineage:
-              description: Lineage information of the disease for the participant.
+              description: Lineage information of the pathogen for the participant.
               type: string
+            variant: 
+              description: Variant information of the pathogen for the participant.
+              type: string
+            infant:
+              description: If the participant was an infant.
+              oneOf:
+                - type: boolean
+                - type: string
+                  constant: unknown
+            symptomatic:
+              description: If the participant was symptomatic.
+              oneOf:
+                - type: boolean
+                - type: string
+                  constant: unknown
         measurements:
           type: array
           minItems: 1
