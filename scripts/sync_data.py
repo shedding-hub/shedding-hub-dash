@@ -20,18 +20,8 @@ def sync_data():
 
     print(f"Syncing data to {destination}")
 
-    # Set up GitHub filesystem
-    # Use GITHUB_TOKEN if available (for higher rate limits)
-    token = os.environ.get("GITHUB_TOKEN")
-
-    fs_kwargs = {
-        "org": "shedding-hub",
-        "repo": "shedding-hub",
-    }
-    if token:
-        fs_kwargs["token"] = token
-
-    fs = fsspec.filesystem("github", **fs_kwargs)
+    # Set up GitHub filesystem (public repo, no auth needed)
+    fs = fsspec.filesystem("github", org="shedding-hub", repo="shedding-hub")
 
     # Find all YAML files in the data directory
     yaml_files = fs.glob("data/**/*.yaml")
