@@ -20,8 +20,22 @@ def sync_data():
 
     print(f"Syncing data to {destination}")
 
-    # Set up GitHub filesystem (public repo, no auth needed)
-    fs = fsspec.filesystem("github", org="shedding-hub", repo="shedding-hub")
+    # Set up GitHub filesystem with authentication for higher rate limits
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        # Use token auth (username can be anything with token auth)
+        fs = fsspec.filesystem(
+            "github",
+            org="shedding-hub",
+            repo="shedding-hub",
+            username="x-access-token",
+            token=token
+        )
+        print("Using authenticated GitHub API (5000 requests/hour)")
+    else:
+        # Fall back to unauthenticated (60 requests/hour)
+        fs = fsspec.filesystem("github", org="shedding-hub", repo="shedding-hub")
+        print("Using unauthenticated GitHub API (60 requests/hour)")
 
     # Find all YAML files in the data directory
     yaml_files = fs.glob("data/**/*.yaml")
