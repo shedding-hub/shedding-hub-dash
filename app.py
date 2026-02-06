@@ -10,6 +10,7 @@ matplotlib.rcParams['axes.formatter.use_mathtext'] = False
 matplotlib.rcParams['axes.formatter.useoffset'] = False
 matplotlib.rcParams['text.usetex'] = False
 
+import dash
 from dash import Dash, html, dcc, callback, Output, Input, State, ALL, ctx
 import pandas as pd
 import json
@@ -292,8 +293,18 @@ def create_dataset_browser():
             )
         sections.append(
             html.Div(className="browser-pathogen-group", children=[
-                html.H6(pathogen, className="browser-pathogen-header"),
-                html.Div(study_buttons, className="browser-study-list"),
+                html.Div(
+                    [html.Span("▶ ", className="collapse-indicator"), pathogen],
+                    id={"type": "browser-pathogen-header", "pathogen": pathogen},
+                    className="browser-pathogen-header",
+                    n_clicks=0,
+                ),
+                html.Div(
+                    study_buttons,
+                    id={"type": "browser-study-list", "pathogen": pathogen},
+                    className="browser-study-list",
+                    style={"display": "none"},
+                ),
             ])
         )
 
@@ -1208,6 +1219,55 @@ def generate_comparison_statistics(datasets_list, biomarker, specimen, reference
 def populate_study_list(modal_style):
     """Populate the study list in the new tab modal"""
     return [dataset_study_map[ds_id] for ds_id in sorted(dataset_study_map.keys())]
+
+
+# Toggle biomarker section visibility callback
+@callback(
+    Output({"type": "browser-study-list", "pathogen": ALL}, "style"),
+    Output({"type": "browser-pathogen-header", "pathogen": ALL}, "children"),
+    Input({"type": "browser-pathogen-header", "pathogen": ALL}, "n_clicks"),
+    State({"type": "browser-study-list", "pathogen": ALL}, "style"),
+    State({"type": "browser-pathogen-header", "pathogen": ALL}, "children"),
+    prevent_initial_call=True
+)
+def toggle_biomarker_section(n_clicks_list, current_styles, current_children):
+    """Toggle visibility of dataset list when biomarker header is clicked."""
+    if not any(n_clicks_list) or not ctx.triggered:
+        raise dash.exceptions.PreventUpdate
+
+    triggered_id = ctx.triggered_id
+    if not triggered_id:
+        raise dash.exceptions.PreventUpdate
+
+    clicked_pathogen = triggered_id["pathogen"]
+
+    # Get list of all pathogens in order
+    pathogens = [match["id"]["pathogen"] for match in ctx.inputs_list[0]]
+
+    new_styles = []
+    new_children = []
+
+    for i, pathogen in enumerate(pathogens):
+        current_style = current_styles[i] or {}
+        current_child = current_children[i]
+
+        if pathogen == clicked_pathogen:
+            # Toggle this section
+            is_hidden = current_style.get("display") == "none"
+            if is_hidden:
+                new_styles.append({"display": "block"})
+                # Update indicator to ▼ (expanded)
+                new_children.append([html.Span("▼ ", className="collapse-indicator"), pathogen])
+            else:
+                new_styles.append({"display": "none"})
+                # Update indicator to ▶ (collapsed)
+                new_children.append([html.Span("▶ ", className="collapse-indicator"), pathogen])
+        else:
+            # Keep current state
+            new_styles.append(current_style)
+            new_children.append(current_child)
+
+    return new_styles, new_children
 
 
 # Browser click-to-create-tab callback

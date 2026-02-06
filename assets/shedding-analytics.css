@@ -437,6 +437,19 @@ H5, H3 {
     border-radius: 4px;
     margin-bottom: 4px;
     font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+}
+
+.browser-pathogen-header:hover {
+    background-color: #d0eaff;
+}
+
+.collapse-indicator {
+    display: inline-block;
+    width: 1em;
+    font-size: 10px;
 }
 
 .browser-study-list {
