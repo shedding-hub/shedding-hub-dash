@@ -52,3 +52,8 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git commit -m "Sync data from shedding-hub repository"
           git push
+
+      - name: Trigger Render deployment
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
