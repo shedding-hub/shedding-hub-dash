@@ -11,7 +11,7 @@ matplotlib.rcParams['axes.formatter.useoffset'] = False
 matplotlib.rcParams['text.usetex'] = False
 
 import dash
-from dash import Dash, html, dcc, callback, Output, Input, State, ALL, ctx
+from dash import Dash, html, dcc, callback, Output, Input, State, ALL, MATCH, ctx
 import pandas as pd
 import json
 import sys
@@ -21,7 +21,6 @@ try:
     from shedding_hub import load_dataset
     from shedding_hub.viz import (
         plot_time_course,
-        plot_time_courses,
         plot_shedding_heatmap,
         plot_mean_trajectory,
         plot_value_distribution_by_time,
@@ -35,6 +34,14 @@ try:
         calc_value_summary,
         calc_dataset_summary,
         compare_datasets
+    )
+    from shedding_hub.shedding_peak import (
+        calc_shedding_peak,
+        plot_shedding_peaks,
+    )
+    from shedding_hub.shedding_duration import (
+        calc_shedding_duration,
+        plot_shedding_durations,
     )
     SHEDDING_HUB_AVAILABLE = True
 except ImportError as e:
@@ -120,7 +127,7 @@ def get_unique_values():
             # Collect specimens
             specimen = analyte_info.get('specimen')
             if isinstance(specimen, list):
-                specimens.update(specimen)
+                specimens.add("+".join(specimen))
             elif specimen:
                 specimens.add(specimen)
 
@@ -157,7 +164,7 @@ def create_welcome_overview():
                 bms.add(bm)
             sp = a_info.get('specimen')
             if isinstance(sp, list):
-                specs.update(sp)
+                specs.add("+".join(sp))
             elif sp:
                 specs.add(sp)
 
@@ -258,9 +265,8 @@ def create_description_card():
 
 def create_dataset_browser():
     """Create a dataset browser grouped by pathogen/biomarker."""
-    # Group datasets by biomarker; assign each dataset to ONE group only (first biomarker)
+    # Group datasets by all their biomarkers (a dataset may appear under multiple groups)
     pathogen_groups = {}
-    assigned = set()
     for ds_id in sorted(datasets.keys()):
         ds = datasets[ds_id]
         analytes = ds.get('analytes', {})
@@ -271,11 +277,8 @@ def create_dataset_browser():
                 bms.add(bm)
         if not bms:
             bms = {"Other"}
-        # Assign to first biomarker alphabetically to avoid duplicate IDs
-        primary_bm = sorted(bms)[0]
-        if ds_id not in assigned:
-            pathogen_groups.setdefault(primary_bm, []).append(ds_id)
-            assigned.add(ds_id)
+        for bm in bms:
+            pathogen_groups.setdefault(bm, []).append(ds_id)
 
     # Build browser sections
     sections = []
@@ -286,7 +289,7 @@ def create_dataset_browser():
             study_buttons.append(
                 html.Button(
                     ds_id,
-                    id={"type": "browser-study-btn", "dataset_id": ds_id},
+                    id={"type": "browser-study-btn", "dataset_id": ds_id, "pathogen": pathogen},
                     className="browser-study-item",
                     n_clicks=0,
                 )
@@ -436,6 +439,9 @@ app.layout = html.Div(
                             ],
                         ),
 
+                        html.Div(id="new-tab-error-msg",
+                                 style={"color": "red", "fontSize": "0.85em", "marginTop": "6px"}),
+
                         html.Hr(),
                         html.Div(
                             className="modal-footer",
@@ -452,32 +458,50 @@ app.layout = html.Div(
             ],
         ),
 
-        # Left column - Controls
+        # Loading overlay — blocks input while callbacks are running
+        html.Div(id="loading-overlay", className="loading-overlay"),
+
+        # Plot lightbox
         html.Div(
-            id="left-column",
-            className="three columns",
+            id="plot-lightbox",
+            className="lightbox-overlay",
+            style={"display": "none"},
             children=[
-                create_description_card(),
-                create_dataset_browser(),
+                html.Span("×", id="lightbox-close", className="lightbox-close"),
+                html.Img(id="lightbox-img", className="lightbox-img", src=""),
             ],
         ),
 
-        # Right column - Tab-based interface
+        # Two-column layout
         html.Div(
-            id="right-column",
-            className="nine columns",
+            className="columns-row",
             children=[
+                # Left column - Controls
                 html.Div(
-                    id="tabs-container",
+                    id="left-column",
                     children=[
-                        dcc.Tabs(
-                            id="main-tabs",
-                            value="welcome-tab",
+                        create_description_card(),
+                        create_dataset_browser(),
+                    ],
+                ),
+
+                # Right column - Tab-based interface
+                html.Div(
+                    id="right-column",
+                    children=[
+                        html.Div(
+                            id="tabs-container",
                             children=[
-                                dcc.Tab(
-                                    label="Welcome",
+                                dcc.Tabs(
+                                    id="main-tabs",
                                     value="welcome-tab",
-                                    children=[create_welcome_overview()],
+                                    children=[
+                                        dcc.Tab(
+                                            label="Welcome",
+                                            value="welcome-tab",
+                                            children=[create_welcome_overview()],
+                                        ),
+                                    ],
                                 ),
                             ],
                         ),
@@ -496,22 +520,28 @@ app.layout = html.Div(
 @callback(
     Output("new-tab-modal", "style"),
     Output("new-tab-name", "value"),
+    Output("new-tab-error-msg", "children"),
     Input("create-tab-btn", "n_clicks"),
     Input("cancel-tab-btn", "n_clicks"),
     Input("confirm-tab-btn", "n_clicks"),
     State("new-tab-modal", "style"),
     State("tab-counter", "data"),
+    State("new-tab-study-type", "value"),
+    State("new-tab-study-select", "value"),
     prevent_initial_call=True
 )
-def toggle_new_tab_modal(create_clicks, cancel_clicks, confirm_clicks, current_style, tab_counter):
+def toggle_new_tab_modal(create_clicks, cancel_clicks, confirm_clicks, current_style, tab_counter, study_type, selected_studies):
     """Show/hide the new tab creation modal and set default tab name"""
     if ctx.triggered_id == "create-tab-btn":
-        # Generate default tab name based on current tab count
         default_name = f"Tab {tab_counter + 1}"
-        return {"display": "block"}, default_name
-    elif ctx.triggered_id in ["cancel-tab-btn", "confirm-tab-btn"]:
-        return {"display": "none"}, ""
-    return current_style, ""
+        return {"display": "block"}, default_name, ""
+    elif ctx.triggered_id == "cancel-tab-btn":
+        return {"display": "none"}, "", ""
+    elif ctx.triggered_id == "confirm-tab-btn":
+        if study_type == "multiple" and not selected_studies:
+            return current_style, dash.no_update, "Please select at least one study."
+        return {"display": "none"}, "", ""
+    return current_style, "", ""
 
 
 @callback(
@@ -521,6 +551,19 @@ def toggle_new_tab_modal(create_clicks, cancel_clicks, confirm_clicks, current_s
 def update_study_select_mode(study_type):
     """Enable multi-select for multiple studies, single-select for individual"""
     return study_type == "multiple"
+
+
+@callback(
+    Output("new-tab-name", "value", allow_duplicate=True),
+    Input("new-tab-study-select", "value"),
+    State("new-tab-study-type", "value"),
+    prevent_initial_call=True
+)
+def auto_name_tab_from_study(selected_study, study_type):
+    """Auto-fill tab name with the study ID when a single study is selected."""
+    if study_type == "individual" and selected_study:
+        return selected_study
+    return dash.no_update
 
 
 @callback(
@@ -581,6 +624,8 @@ def create_new_tab(n_clicks, tab_name, study_type, content_type, selected_studie
     """Create a new tab with user-specified configuration"""
     if not n_clicks or not tab_name:
         return current_tabs, tab_configs, tab_counter, None
+    if study_type == "multiple" and not selected_studies:
+        return current_tabs, tab_configs, tab_counter, None
 
     # Generate new tab ID
     new_tab_id = f"tab-{tab_counter}"
@@ -609,11 +654,21 @@ def create_new_tab(n_clicks, tab_name, study_type, content_type, selected_studie
     return current_tabs, tab_configs, tab_counter, new_tab_id
 
 
+def _is_ct_unit(unit):
+    """Return True if the unit string indicates a CT (cycle threshold) value."""
+    if not unit:
+        return False
+    unit_lower = str(unit).lower()
+    return "cycle threshold" in unit_lower or unit_lower == "ct"
+
+
 def _get_dataset_filter_options(selected_studies):
-    """Extract available biomarkers, specimens, and reference events from selected dataset(s)."""
+    """Extract available biomarkers, specimens, reference events, and value types from selected dataset(s)."""
     biomarkers = set()
     specimens = set()
     ref_events = set()
+    has_concentration = False
+    has_ct = False
 
     # Normalize to list
     if isinstance(selected_studies, str):
@@ -631,26 +686,99 @@ def _get_dataset_filter_options(selected_studies):
                 biomarkers.add(bm)
             sp = a_info.get('specimen')
             if isinstance(sp, list):
-                specimens.update(sp)
+                specimens.add("+".join(sp))
             elif sp:
                 specimens.add(sp)
             ref = a_info.get('reference_event')
             if ref:
                 ref_events.add(ref)
+            unit = a_info.get('unit')
+            if _is_ct_unit(unit):
+                has_ct = True
+            else:
+                has_concentration = True
 
-    return sorted(biomarkers), sorted(specimens), sorted(ref_events)
+    value_types = []
+    if has_concentration:
+        value_types.append({"label": "Concentration", "value": "concentration"})
+    if has_ct:
+        value_types.append({"label": "Ct Values", "value": "ct"})
+
+    return sorted(biomarkers), sorted(specimens), sorted(ref_events), value_types
 
 
-def _create_filter_bar(tab_id, filter_prefix, selected_studies=None):
+def _normalize_filter(val):
+    """Normalize a multi-select dropdown value to a single value or None.
+    Returns the single value if exactly one is selected, else None (no filter)."""
+    if isinstance(val, list):
+        return val[0] if len(val) == 1 else None
+    return val
+
+
+def _get_individual_plot_combinations(dataset, biomarker_filter, specimen_filter, value_type_filter, ref_event_filter=None):
+    """Return sorted list of (biomarker, specimen, value_type, reference_event) tuples that exist
+    in the dataset and match the active filter selections."""
+    combos = set()
+    for a_info in dataset.get('analytes', {}).values():
+        bm = a_info.get('biomarker')
+        sp = a_info.get('specimen')
+        if isinstance(sp, list):
+            sp = "+".join(sp)
+        unit = a_info.get('unit')
+        vt = 'ct' if _is_ct_unit(unit) else 'concentration'
+        re = a_info.get('reference_event')
+        if bm and sp:
+            combos.add((bm, sp, vt, re))
+
+    bm_set = set(biomarker_filter) if isinstance(biomarker_filter, list) else ({biomarker_filter} if biomarker_filter else None)
+    sp_set = set(specimen_filter) if isinstance(specimen_filter, list) else ({specimen_filter} if specimen_filter else None)
+    re_set = set(ref_event_filter) if isinstance(ref_event_filter, list) else ({ref_event_filter} if ref_event_filter else None)
+
+    filtered = []
+    for bm, sp, vt, re in sorted(combos):
+        if bm_set and bm not in bm_set:
+            continue
+        if sp_set and sp not in sp_set:
+            continue
+        if value_type_filter and vt != value_type_filter:
+            continue
+        if re_set and re not in re_set:
+            continue
+        filtered.append((bm, sp, vt, re))
+    return filtered
+
+
+def _create_filter_bar(tab_id, filter_prefix, selected_studies=None, study_type=None):
     """Create an inline filter bar for a tab, scoped to the selected dataset(s)."""
-    bms, specs, evts = _get_dataset_filter_options(selected_studies)
+    bms, specs, evts, value_types = _get_dataset_filter_options(selected_studies)
 
-    # Default to first option for each filter
-    default_bm = bms[0] if bms else None
-    default_spec = specs[0] if specs else None
-    default_evt = evts[0] if evts else None
+    # Default to all available options selected (except Value Type: first only)
+    default_bm = bms if bms else []
+    default_spec = specs if specs else []
+    default_evt = evts if evts else []
+    default_value_type = value_types[0]["value"] if value_types else None
 
-    return html.Div(
+    # For multi-study tabs, show an editable dropdown to add/remove studies
+    all_study_ids = sorted(datasets.keys())
+    studies_row = None
+    if study_type == "multiple" and selected_studies:
+        study_list = [selected_studies] if isinstance(selected_studies, str) else selected_studies
+        studies_row = html.Div(
+            className="tab-filter-studies-row",
+            children=[
+                html.Label("Selected Studies"),
+                dcc.Dropdown(
+                    id={"type": f"{filter_prefix}-studies", "tab_id": tab_id},
+                    options=[{"label": s, "value": s} for s in all_study_ids],
+                    value=study_list,
+                    multi=True,
+                    placeholder="Select studies...",
+                    className="studies-display-dropdown",
+                ),
+            ],
+        )
+
+    filters_row = html.Div(
         className="tab-filter-bar",
         children=[
             html.Div(className="tab-filter-item", children=[
@@ -659,6 +787,7 @@ def _create_filter_bar(tab_id, filter_prefix, selected_studies=None):
                     id={"type": f"{filter_prefix}-biomarker", "tab_id": tab_id},
                     options=[{"label": bm, "value": bm} for bm in bms],
                     value=default_bm,
+                    multi=True,
                     placeholder="All",
                 ),
             ]),
@@ -668,6 +797,7 @@ def _create_filter_bar(tab_id, filter_prefix, selected_studies=None):
                     id={"type": f"{filter_prefix}-specimen", "tab_id": tab_id},
                     options=[{"label": sp, "value": sp} for sp in specs],
                     value=default_spec,
+                    multi=True,
                     placeholder="All",
                 ),
             ]),
@@ -677,23 +807,24 @@ def _create_filter_bar(tab_id, filter_prefix, selected_studies=None):
                     id={"type": f"{filter_prefix}-ref-event", "tab_id": tab_id},
                     options=[{"label": evt, "value": evt} for evt in evts],
                     value=default_evt,
+                    multi=True,
                     placeholder="All",
                 ),
             ]),
             html.Div(className="tab-filter-item", children=[
                 html.Label("Value Type"),
-                dcc.RadioItems(
+                dcc.Dropdown(
                     id={"type": f"{filter_prefix}-value-type", "tab_id": tab_id},
-                    options=[
-                        {"label": "Concentration", "value": "concentration"},
-                        {"label": "Ct Values", "value": "ct"},
-                    ],
-                    value="concentration",
-                    className="tab-filter-radio",
+                    options=value_types,
+                    value=default_value_type,
+                    clearable=False,
                 ),
             ]),
         ],
     )
+
+    children = [studies_row, filters_row] if studies_row else [filters_row]
+    return html.Div(className="tab-filter-container", children=children)
 
 
 def create_tab_content(tab_id, config):
@@ -726,7 +857,7 @@ def create_tab_content(tab_id, config):
             className="tab-content-wrapper",
             children=[
                 header,
-                _create_filter_bar(tab_id, filter_prefix, config.get("selected_studies")),
+                _create_filter_bar(tab_id, filter_prefix, config.get("selected_studies"), study_type=study_type),
                 html.Hr(),
                 html.Div(id={"type": "tab-content", "tab_id": tab_id}),
             ],
@@ -734,25 +865,24 @@ def create_tab_content(tab_id, config):
     else:  # plots
         if study_type == "individual":
             plot_options = [
+                {"label": "Shedding Heatmap", "value": "heatmap"},
+                {"label": "Value Distribution", "value": "distribution"},
                 {"label": "Time Course Trajectories", "value": "time_course"},
                 {"label": "Mean Trajectory", "value": "mean_trajectory"},
                 {"label": "Detection Probability", "value": "detection"},
                 {"label": "Clearance Curve", "value": "clearance"},
-                {"label": "Shedding Heatmap", "value": "heatmap"},
-                {"label": "Value Distribution", "value": "distribution"},
             ]
         else:
             plot_options = [
-                {"label": "Comparison Time Courses", "value": "time_courses_compare"},
-                {"label": "Comparison Detection", "value": "detection_compare"},
-                {"label": "Comparison Clearance", "value": "clearance_compare"},
+                {"label": "Shedding Peak Comparison", "value": "peak_compare"},
+                {"label": "Shedding Duration Comparison", "value": "duration_compare"},
             ]
 
         return html.Div(
             className="tab-content-wrapper",
             children=[
                 header,
-                _create_filter_bar(tab_id, filter_prefix, config.get("selected_studies")),
+                _create_filter_bar(tab_id, filter_prefix, config.get("selected_studies"), study_type=study_type),
                 html.Hr(),
 
                 html.P("Select Plot Type:"),
@@ -779,9 +909,10 @@ def create_tab_content(tab_id, config):
     Input({"type": "plot-filter-specimen", "tab_id": ALL}, "value"),
     Input({"type": "plot-filter-ref-event", "tab_id": ALL}, "value"),
     Input({"type": "plot-filter-value-type", "tab_id": ALL}, "value"),
+    Input({"type": "plot-filter-studies", "tab_id": ALL}, "value"),
     Input("tab-configs", "data"),
 )
-def update_tab_plots(plot_types, biomarkers, specimens, ref_events, value_types, tab_configs):
+def update_tab_plots(plot_types, biomarkers, specimens, ref_events, value_types, studies_inputs, tab_configs):
     """Update plots in all tabs based on per-tab filters and plot type selection"""
     if not SHEDDING_HUB_AVAILABLE:
         return [html.Div("Shedding Hub package not available", className="error-message")] * max(len(plot_types), 1)
@@ -793,6 +924,7 @@ def update_tab_plots(plot_types, biomarkers, specimens, ref_events, value_types,
     plot_tabs = [(k, v) for k, v in tab_configs.items() if v.get("content_type") == "plots"]
 
     plot_elements = []
+    multi_study_tab_idx = 0  # separate counter: studies_inputs only has entries for multi-study tabs
     for idx, plot_type in enumerate(plot_types):
         if idx >= len(plot_tabs):
             plot_elements.append(html.Div("Tab configuration error", className="error-message"))
@@ -802,14 +934,14 @@ def update_tab_plots(plot_types, biomarkers, specimens, ref_events, value_types,
         study_type = config.get("study_type")
         selected_studies = config.get("selected_studies")
 
-        # Per-tab filter values
-        biomarker = biomarkers[idx] if idx < len(biomarkers) else None
-        specimen = specimens[idx] if idx < len(specimens) else None
-        reference_event = ref_events[idx] if idx < len(ref_events) else None
-        value_type = value_types[idx] if idx < len(value_types) else "concentration"
+        # Value type is always single-select
+        value_type = _normalize_filter(value_types[idx] if idx < len(value_types) else None) or "concentration"
 
         try:
             if study_type == "individual":
+                biomarker_filter = biomarkers[idx] if idx < len(biomarkers) else None
+                specimen_filter = specimens[idx] if idx < len(specimens) else None
+                ref_event_filter = ref_events[idx] if idx < len(ref_events) else None
                 if not selected_studies:
                     plot_element = html.Div("Please select a study in the tab creation", className="error-message")
                 elif selected_studies not in datasets:
@@ -818,10 +950,21 @@ def update_tab_plots(plot_types, biomarkers, specimens, ref_events, value_types,
                     dataset = datasets[selected_studies]
                     print(f"Generating plot: {plot_type} for dataset: {selected_studies}")
                     plot_element = generate_individual_plot(
-                        dataset, plot_type, biomarker, specimen, reference_event, value_type
+                        dataset, plot_type, biomarker_filter, specimen_filter, ref_event_filter, value_type
                     )
             else:
-                if not selected_studies or not isinstance(selected_studies, list):
+                # Pass raw filter lists to comparison plot; it resolves combinations internally
+                biomarker = biomarkers[idx] if idx < len(biomarkers) else None
+                specimen = specimens[idx] if idx < len(specimens) else None
+                reference_event = ref_events[idx] if idx < len(ref_events) else None
+                # Use the live dropdown value directly to avoid race condition with tab-configs.
+                # studies_inputs only contains entries for multi-study tabs, so use multi_study_tab_idx
+                # rather than idx (which counts all tabs including individual ones).
+                selected_studies = studies_inputs[multi_study_tab_idx] if multi_study_tab_idx < len(studies_inputs) else selected_studies
+                multi_study_tab_idx += 1
+                if isinstance(selected_studies, str):
+                    selected_studies = [selected_studies]
+                if not selected_studies:
                     plot_element = html.Div("Please select studies in the tab creation", className="error-message")
                 else:
                     study_datasets = [datasets[sid] for sid in selected_studies if sid in datasets]
@@ -912,157 +1055,237 @@ PLOT_DESCRIPTIONS = {
         "Box plots showing how measurement values are distributed at different time points, "
         "useful for understanding variability in shedding patterns."
     ),
-    "time_courses_compare": (
-        "Comparison of individual participant shedding trajectories across multiple datasets. "
-        "Grid of faceted plots with each column representing a different study and rows "
-        "representing different specimen types."
+    "peak_compare": (
+        "Comparison of shedding peak timing across multiple studies. "
+        "Horizontal box plots (min, Q1, median, Q3, max) for each study, "
+        "color-coded by specimen type."
     ),
-    "detection_compare": (
-        "Comparison of detection probability across multiple studies. "
-        "Shows the proportion of positive measurements over time for each study."
-    ),
-    "clearance_compare": (
-        "Comparison of Kaplan-Meier clearance curves across multiple studies. "
-        "Shows the proportion of participants still shedding over time for each study."
+    "duration_compare": (
+        "Comparison of shedding duration across multiple studies. "
+        "Range bars show min, mean, and max shedding duration for each study, "
+        "color-coded by specimen type."
     ),
 }
 
 
-def generate_individual_plot(dataset, plot_type, biomarker, specimen, reference_event, value_type):
-    """Generate plot for individual study - returns html.Img element."""
-    kwargs = {}
-    if biomarker:
-        kwargs['biomarker'] = biomarker
-    if specimen:
-        kwargs['specimen'] = specimen
+def _make_single_plot(dataset, plot_type, bm, sp, vt, ref_event=None):
+    """Generate one matplotlib figure for the given (biomarker, specimen, value_type, ref_event) combo."""
+    kwargs = {'biomarker': bm, 'specimen': sp}
+    if ref_event:
+        kwargs['reference_event'] = ref_event
+    if plot_type == "time_course":
+        kwargs['value'] = vt
+        kwargs['figsize_width_per_specimen'] = 10
+        kwargs['figsize_height'] = 6
+        kwargs['max_nparticipant'] = 20
+        return _call_viz_function(plot_time_course, dataset, **kwargs)
+    elif plot_type == "mean_trajectory":
+        kwargs['value'] = vt
+        kwargs['figsize'] = (10, 6)
+        return _call_viz_function(plot_mean_trajectory, dataset, **kwargs)
+    elif plot_type == "detection":
+        kwargs['figsize'] = (10, 6)
+        return _call_viz_function(plot_detection_probability, dataset, **kwargs)
+    elif plot_type == "clearance":
+        kwargs['figsize'] = (10, 6)
+        return _call_viz_function(plot_clearance_curve, dataset, **kwargs)
+    elif plot_type == "heatmap":
+        kwargs['value'] = vt
+        kwargs['figsize'] = (12, 6)
+        return _call_viz_function(plot_shedding_heatmap, dataset, **kwargs)
+    elif plot_type == "distribution":
+        kwargs['value'] = vt
+        return _call_viz_function(plot_value_distribution_by_time, dataset, **kwargs)
+    else:
+        raise ValueError(f"Unknown plot type: {plot_type}")
 
-    try:
-        if plot_type == "time_course":
-            # Uses figsize_width_per_specimen and figsize_height
-            if value_type:
-                kwargs['value'] = value_type
-            kwargs['figsize_width_per_specimen'] = 10
-            kwargs['figsize_height'] = 6
-            mpl_fig = _call_viz_function(plot_time_course, dataset, **kwargs)
 
-        elif plot_type == "mean_trajectory":
-            if value_type:
-                kwargs['value'] = value_type
-            kwargs['figsize'] = (10, 6)
-            mpl_fig = _call_viz_function(plot_mean_trajectory, dataset, **kwargs)
+def generate_individual_plot(dataset, plot_type, biomarker_filter, specimen_filter, ref_event_filter, value_type_filter):
+    """Generate one plot per (biomarker, specimen, value_type, reference_event) combination present in the dataset."""
+    combos = _get_individual_plot_combinations(dataset, biomarker_filter, specimen_filter, value_type_filter, ref_event_filter)
 
-        elif plot_type == "detection":
-            kwargs['figsize'] = (10, 6)
-            mpl_fig = _call_viz_function(plot_detection_probability, dataset, **kwargs)
+    if not combos:
+        return html.Div("No data matches the selected filters.", className="error-message")
 
-        elif plot_type == "clearance":
-            kwargs['figsize'] = (10, 6)
-            mpl_fig = _call_viz_function(plot_clearance_curve, dataset, **kwargs)
+    # Table shows all combinations regardless of value type filter
+    all_combos = _get_individual_plot_combinations(dataset, biomarker_filter, specimen_filter, None, ref_event_filter)
+    header = html.Tr([html.Th("Biomarker"), html.Th("Specimen"), html.Th("Reference Event"), html.Th("Value Type")])
+    rows = [html.Tr([html.Td(bm), html.Td(sp), html.Td(re or ""), html.Td(vt.capitalize())]) for bm, sp, vt, re in all_combos]
+    summary = html.Div([
+        html.P(f"{len(all_combos)} combination(s) found in this dataset:", className="combo-summary-title"),
+        html.Table([header] + rows, className="combo-summary-table"),
+    ], className="combo-summary")
 
-        elif plot_type == "heatmap":
-            if value_type:
-                kwargs['value'] = value_type
-            kwargs['figsize'] = (12, 6)
-            mpl_fig = _call_viz_function(plot_shedding_heatmap, dataset, **kwargs)
+    # One plot per combination
+    plot_items = []
+    for bm, sp, vt, re in combos:
+        label = f"{bm}  |  {sp}" + (f"  |  {re}" if re else "") + f"  |  {vt.capitalize()}"
+        try:
+            mpl_fig = _make_single_plot(dataset, plot_type, bm, sp, vt, ref_event=re)
+            img_src = matplotlib_to_img_src(mpl_fig)
+            plot_items.append(html.Div([
+                html.P(label, className="combo-plot-label"),
+                html.Img(src=img_src, className="plot-img"),
+            ], className="combo-plot-item"))
+        except Exception as e:
+            print(f"Error generating plot for ({bm}, {sp}, {vt}, {re}): {e}")
+            import traceback
+            traceback.print_exc()
+            plot_items.append(html.Div([
+                html.P(label, className="combo-plot-label"),
+                html.Div(f"Error: {str(e)}", className="error-message"),
+            ], className="combo-plot-item"))
 
-        elif plot_type == "distribution":
-            if value_type:
-                kwargs['value'] = value_type
-            mpl_fig = _call_viz_function(plot_value_distribution_by_time, dataset, **kwargs)
+    description = PLOT_DESCRIPTIONS.get(plot_type, "")
+    return html.Div([
+        html.Div(plot_items, className="combo-plots-container"),
+        html.P(description, className="plot-description"),
+        summary,
+    ])
 
-        else:
-            return html.Div(f"Unknown plot type: {plot_type}", className="error-message")
 
-        img_src = matplotlib_to_img_src(mpl_fig)
-        description = PLOT_DESCRIPTIONS.get(plot_type, "")
-        return html.Div([
-            html.Img(src=img_src, className="plot-img"),
-            html.P(description, className="plot-description"),
-        ])
+def _resolve_filter_list(selected, available):
+    """Return the sorted list of values to plot given a filter selection and what exists in the data.
+    None or empty list → all available values. String → single-item list. List → intersection with available."""
+    available_set = set(available)
+    if not selected:
+        return sorted(available_set)
+    if isinstance(selected, str):
+        return [selected] if selected in available_set else sorted(available_set)
+    resolved = [v for v in selected if v in available_set]
+    return resolved if resolved else sorted(available_set)
 
-    except Exception as e:
-        print(f"Error in generate_individual_plot: {e}")
-        import traceback
-        traceback.print_exc()
-        return html.Div(f"Error: {str(e)}", className="error-message")
+
+def _arrange_plots_in_rows(img_srcs, max_per_row=2):
+    """Wrap a list of base64 image srcs into a 2-column grid (same layout as individual plots)."""
+    items = [html.Div(html.Img(src=src, className="plot-img"), className="combo-plot-item") for src in img_srcs]
+    return [html.Div(items, className="combo-plots-container")]
+
+
+def _build_comparison_summary(datasets_list, biomarker_filter, specimen_filter, ref_event_filter, value_type_filter):
+    """Return a summary div listing unique (study, biomarker, specimen, reference_event, value_type) combos."""
+    combos = []
+    bm_set = set(biomarker_filter) if isinstance(biomarker_filter, list) else ({biomarker_filter} if biomarker_filter else None)
+    sp_set = set(specimen_filter) if isinstance(specimen_filter, list) else ({specimen_filter} if specimen_filter else None)
+    re_set = set(ref_event_filter) if isinstance(ref_event_filter, list) else ({ref_event_filter} if ref_event_filter else None)
+
+    for dataset in datasets_list:
+        study = dataset.get('dataset_id', '')
+        for a_info in dataset.get('analytes', {}).values():
+            bm = a_info.get('biomarker')
+            sp = a_info.get('specimen')
+            if isinstance(sp, list):
+                sp = "+".join(sp)
+            unit = a_info.get('unit')
+            vt = 'ct' if _is_ct_unit(unit) else 'concentration'
+            re = a_info.get('reference_event')
+            if not bm or not sp:
+                continue
+            if bm_set and bm not in bm_set:
+                continue
+            if sp_set and sp not in sp_set:
+                continue
+            if re_set and re not in re_set:
+                continue
+            if value_type_filter and vt != value_type_filter:
+                continue
+            combos.append((study, bm, sp, re or '', vt))
+
+    combos = sorted(set(combos))
+    if not combos:
+        return None
+
+    header = html.Tr([html.Th("Study"), html.Th("Biomarker"), html.Th("Specimen"), html.Th("Reference Event"), html.Th("Value Type")])
+    rows = [html.Tr([html.Td(s), html.Td(bm), html.Td(sp), html.Td(re), html.Td(vt.capitalize())]) for s, bm, sp, re, vt in combos]
+    return html.Div([
+        html.P(f"{len(combos)} combination(s) across selected studies:", className="combo-summary-title"),
+        html.Table([header] + rows, className="combo-summary-table"),
+    ], className="combo-summary")
 
 
 def generate_comparison_plot(datasets_list, plot_type, biomarker, specimen, reference_event, value_type):
-    """Generate comparison plot for multiple studies - returns html.Img element"""
-    kwargs = {}
-    if biomarker:
-        kwargs['biomarker'] = biomarker
-    if specimen:
-        kwargs['specimen'] = specimen
-
+    """Generate comparison plots for multiple studies, one subplot per filter combination."""
     try:
-        if plot_type == "time_courses_compare":
-            # Uses figsize_width_per_study and figsize_height_per_specimen
-            if value_type:
-                kwargs['value'] = value_type
-            kwargs['figsize_width_per_study'] = 5
-            kwargs['figsize_height_per_specimen'] = 4
-            mpl_fig = plot_time_courses(datasets_list, **kwargs)
-
-        elif plot_type == "detection_compare":
-            n_datasets = len(datasets_list)
-            mpl_fig, axes = plt.subplots(n_datasets, 1,
-                                         figsize=(10, 5 * n_datasets), sharex=True)
-            if n_datasets == 1:
-                axes = [axes]
-
-            for idx, dataset in enumerate(datasets_list):
+        if plot_type == "peak_compare":
+            dfs = []
+            for dataset in datasets_list:
                 try:
-                    temp_fig = plot_detection_probability(dataset, figsize=(10, 5), **kwargs)
-                    temp_ax = temp_fig.gca()
-                    for line in temp_ax.get_lines():
-                        axes[idx].plot(line.get_xdata(), line.get_ydata(),
-                                     label=f"{dataset.get('dataset_id', 'Unknown')}")
-                    axes[idx].set_ylabel('Proportion Positive')
-                    axes[idx].legend()
-                    axes[idx].set_title(dataset.get('dataset_id', 'Unknown'))
-                    plt.close(temp_fig)
+                    df = calc_shedding_peak(dataset, output='summary')
+                    if not df.empty:
+                        dfs.append(df)
                 except Exception as e:
-                    print(f"Error plotting detection for {dataset.get('dataset_id')}: {e}")
+                    print(f"Error calculating shedding peak for {dataset.get('dataset_id')}: {e}")
 
-            axes[-1].set_xlabel('Time (days)')
-            mpl_fig.suptitle('Detection Probability Comparison')
-            plt.tight_layout()
+            if not dfs:
+                return html.Div("No valid shedding peak data found for selected studies.", className="error-message")
 
-        elif plot_type == "clearance_compare":
-            n_datasets = len(datasets_list)
-            mpl_fig, axes = plt.subplots(n_datasets, 1,
-                                         figsize=(10, 5 * n_datasets), sharex=True)
-            if n_datasets == 1:
-                axes = [axes]
+            combined_df = pd.concat(dfs, ignore_index=True)
 
-            for idx, dataset in enumerate(datasets_list):
+            # Resolve each filter to the list of values to iterate over
+            bm_list = _resolve_filter_list(biomarker, combined_df['biomarker'].dropna().unique())
+            # Resolve reference events per biomarker to avoid non-existent combinations
+            existing_combos = set(zip(combined_df['biomarker'], combined_df['reference_event']))
+
+            img_srcs = []
+            for bm in bm_list:
+                bm_ref_events = [ref for (b, ref) in existing_combos if b == bm]
+                ref_list = _resolve_filter_list(reference_event, bm_ref_events)
+                for ref_evt in ref_list:
+                    if (bm, ref_evt) not in existing_combos:
+                        continue
+                    try:
+                        mpl_fig = plot_shedding_peaks(combined_df, min_nparticipant=1, biomarker=bm, reference_event=ref_evt)
+                        img_srcs.append(matplotlib_to_img_src(mpl_fig))
+                    except Exception as e:
+                        print(f"Skipping peak plot for biomarker={bm}, ref_event={ref_evt}: {e}")
+
+            if not img_srcs:
+                return html.Div("No data to display for the selected filters.", className="error-message")
+
+            description = PLOT_DESCRIPTIONS.get(plot_type, "")
+            summary = _build_comparison_summary(datasets_list, biomarker, specimen, reference_event, None)
+            children = _arrange_plots_in_rows(img_srcs) + [html.P(description, className="plot-description")]
+            if summary:
+                children.append(summary)
+            return html.Div(children)
+
+        elif plot_type == "duration_compare":
+            dfs = []
+            for dataset in datasets_list:
                 try:
-                    temp_fig = plot_clearance_curve(dataset, figsize=(10, 5), **kwargs)
-                    temp_ax = temp_fig.gca()
-                    for line in temp_ax.get_lines():
-                        axes[idx].plot(line.get_xdata(), line.get_ydata(),
-                                     label=f"{dataset.get('dataset_id', 'Unknown')}")
-                    axes[idx].set_ylabel('Proportion Still Shedding')
-                    axes[idx].legend()
-                    axes[idx].set_title(dataset.get('dataset_id', 'Unknown'))
-                    plt.close(temp_fig)
+                    df = calc_shedding_duration(dataset, output='summary')
+                    if not df.empty:
+                        dfs.append(df)
                 except Exception as e:
-                    print(f"Error plotting clearance for {dataset.get('dataset_id')}: {e}")
+                    print(f"Error calculating shedding duration for {dataset.get('dataset_id')}: {e}")
 
-            axes[-1].set_xlabel('Time (days)')
-            mpl_fig.suptitle('Clearance Curve Comparison')
-            plt.tight_layout()
+            if not dfs:
+                return html.Div("No valid shedding duration data found for selected studies.", className="error-message")
+
+            combined_df = pd.concat(dfs, ignore_index=True)
+
+            bm_list = _resolve_filter_list(biomarker, combined_df['biomarker'].dropna().unique())
+
+            img_srcs = []
+            for bm in bm_list:
+                try:
+                    mpl_fig = plot_shedding_durations(combined_df, biomarker=bm)
+                    img_srcs.append(matplotlib_to_img_src(mpl_fig))
+                except Exception as e:
+                    print(f"Skipping duration plot for biomarker={bm}: {e}")
+
+            if not img_srcs:
+                return html.Div("No data to display for the selected filters.", className="error-message")
+
+            description = PLOT_DESCRIPTIONS.get(plot_type, "")
+            summary = _build_comparison_summary(datasets_list, biomarker, specimen, reference_event, None)
+            children = _arrange_plots_in_rows(img_srcs) + [html.P(description, className="plot-description")]
+            if summary:
+                children.append(summary)
+            return html.Div(children)
 
         else:
             return html.Div(f"Unknown comparison plot type: {plot_type}", className="error-message")
-
-        img_src = matplotlib_to_img_src(mpl_fig)
-        description = PLOT_DESCRIPTIONS.get(plot_type, "")
-        return html.Div([
-            html.Img(src=img_src, className="plot-img"),
-            html.P(description, className="plot-description"),
-        ])
 
     except Exception as e:
         print(f"Error in generate_comparison_plot: {e}")
@@ -1094,10 +1317,10 @@ def update_tab_statistics(biomarkers, specimens, ref_events, value_types, tab_co
         study_type = config.get("study_type")
         selected_studies = config.get("selected_studies")
 
-        biomarker = biomarkers[idx] if idx < len(biomarkers) else None
-        specimen = specimens[idx] if idx < len(specimens) else None
-        reference_event = ref_events[idx] if idx < len(ref_events) else None
-        value_type = value_types[idx] if idx < len(value_types) else "concentration"
+        biomarker = _normalize_filter(biomarkers[idx] if idx < len(biomarkers) else None)
+        specimen = _normalize_filter(specimens[idx] if idx < len(specimens) else None)
+        reference_event = _normalize_filter(ref_events[idx] if idx < len(ref_events) else None)
+        value_type = _normalize_filter(value_types[idx] if idx < len(value_types) else None) or "concentration"
 
         try:
             if study_type == "individual":
@@ -1112,7 +1335,9 @@ def update_tab_statistics(biomarkers, specimens, ref_events, value_types, tab_co
                         dataset, biomarker, specimen, reference_event, value_type
                     )
             else:
-                if not selected_studies or not isinstance(selected_studies, list):
+                if isinstance(selected_studies, str):
+                    selected_studies = [selected_studies]
+                if not selected_studies:
                     content = html.Div("Please select studies in the tab creation")
                 else:
                     study_datasets = [datasets[sid] for sid in selected_studies if sid in datasets]
@@ -1135,18 +1360,82 @@ def update_tab_statistics(biomarkers, specimens, ref_events, value_types, tab_co
     return contents
 
 
+@callback(
+    Output("tab-configs", "data", allow_duplicate=True),
+    Input({"type": "plot-filter-studies", "tab_id": ALL}, "value"),
+    Input({"type": "stats-filter-studies", "tab_id": ALL}, "value"),
+    State({"type": "plot-filter-studies", "tab_id": ALL}, "id"),
+    State({"type": "stats-filter-studies", "tab_id": ALL}, "id"),
+    State("tab-configs", "data"),
+    prevent_initial_call=True,
+)
+def sync_studies_to_tab_configs(plot_studies, stats_studies, plot_ids, stats_ids, tab_configs):
+    """Keep tab-configs in sync when the studies filter is changed interactively."""
+    for i, sid in enumerate(plot_ids or []):
+        tab_id = sid["tab_id"]
+        if tab_id in tab_configs and i < len(plot_studies):
+            tab_configs[tab_id]["selected_studies"] = plot_studies[i] or []
+    for i, sid in enumerate(stats_ids or []):
+        tab_id = sid["tab_id"]
+        if tab_id in tab_configs and i < len(stats_studies):
+            tab_configs[tab_id]["selected_studies"] = stats_studies[i] or []
+    return tab_configs
+
+
+@callback(
+    Output({"type": "plot-filter-biomarker", "tab_id": MATCH}, "options"),
+    Output({"type": "plot-filter-biomarker", "tab_id": MATCH}, "value"),
+    Output({"type": "plot-filter-specimen", "tab_id": MATCH}, "options"),
+    Output({"type": "plot-filter-specimen", "tab_id": MATCH}, "value"),
+    Output({"type": "plot-filter-ref-event", "tab_id": MATCH}, "options"),
+    Output({"type": "plot-filter-ref-event", "tab_id": MATCH}, "value"),
+    Input({"type": "plot-filter-studies", "tab_id": MATCH}, "value"),
+    prevent_initial_call=True,
+)
+def update_plot_filters_on_studies_change(selected_studies):
+    """Refresh biomarker/specimen/event filter options when studies selection changes."""
+    bms, specs, evts, _ = _get_dataset_filter_options(selected_studies or [])
+    return (
+        [{"label": bm, "value": bm} for bm in bms], bms,
+        [{"label": sp, "value": sp} for sp in specs], specs,
+        [{"label": evt, "value": evt} for evt in evts], evts,
+    )
+
+
+@callback(
+    Output({"type": "stats-filter-biomarker", "tab_id": MATCH}, "options"),
+    Output({"type": "stats-filter-biomarker", "tab_id": MATCH}, "value"),
+    Output({"type": "stats-filter-specimen", "tab_id": MATCH}, "options"),
+    Output({"type": "stats-filter-specimen", "tab_id": MATCH}, "value"),
+    Output({"type": "stats-filter-ref-event", "tab_id": MATCH}, "options"),
+    Output({"type": "stats-filter-ref-event", "tab_id": MATCH}, "value"),
+    Input({"type": "stats-filter-studies", "tab_id": MATCH}, "value"),
+    prevent_initial_call=True,
+)
+def update_stats_filters_on_studies_change(selected_studies):
+    """Refresh biomarker/specimen/event filter options when studies selection changes."""
+    bms, specs, evts, _ = _get_dataset_filter_options(selected_studies or [])
+    return (
+        [{"label": bm, "value": bm} for bm in bms], bms,
+        [{"label": sp, "value": sp} for sp in specs], specs,
+        [{"label": evt, "value": evt} for evt in evts], evts,
+    )
+
+
 def _dataframe_to_dash_table(df):
     """Convert a pandas DataFrame to a Dash HTML table."""
     # Format numeric values
     formatted_df = df.copy()
     for col in formatted_df.columns:
         formatted_df[col] = formatted_df[col].apply(
-            lambda x: f'{x:.2f}' if isinstance(x, (int, float)) and not pd.isna(x) else str(x) if not pd.isna(x) else ''
+            lambda x: str(int(x)) if isinstance(x, (int, float)) and not pd.isna(x) and float(x) == int(x)
+                      else f'{x:.2f}' if isinstance(x, (int, float)) and not pd.isna(x)
+                      else str(x) if not pd.isna(x) else ''
         )
 
-    # Create table header
+    # Create table header with sortable columns
     header = html.Thead(
-        html.Tr([html.Th(col) for col in formatted_df.columns])
+        html.Tr([html.Th(col, className="sortable-th") for col in formatted_df.columns])
     )
 
     # Create table body
@@ -1304,7 +1593,7 @@ def toggle_biomarker_section(n_clicks_list, current_styles, current_children):
     Output("tab-configs", "data", allow_duplicate=True),
     Output("tab-counter", "data", allow_duplicate=True),
     Output("main-tabs", "value", allow_duplicate=True),
-    Input({"type": "browser-study-btn", "dataset_id": ALL}, "n_clicks"),
+    Input({"type": "browser-study-btn", "dataset_id": ALL, "pathogen": ALL}, "n_clicks"),
     State("main-tabs", "children"),
     State("tab-configs", "data"),
     State("tab-counter", "data"),
