@@ -9,6 +9,12 @@
     max-width: none;
 }
 
+.columns-row {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+}
+
 body {
     background-color: #f9f9f9;
     color: #333333;
@@ -46,17 +52,21 @@ H5, H3 {
 }
 
 #left-column {
+    width: 20%;
+    flex-shrink: 0;
     margin-top: 20px;
     padding: 0rem 1rem;
-    display: flex;
-    flex-direction: column;
     min-height: calc(100vh - 5.5rem);
+    box-sizing: border-box;
 }
 
 #right-column {
+    flex: 1;
+    min-width: 0;
     background-color: #f4f4f4;
     padding: 0rem 2rem;
     min-height: calc(100vh - 5.5rem);
+    box-sizing: border-box;
 }
 
 .table-row {
@@ -271,9 +281,19 @@ H5, H3 {
     color: white;
 }
 
+/* Dash tab strip */
+#tabs-container {
+    margin-top: 10px;
+}
+
+.tab {
+    padding: 10px 20px !important;
+    font-size: 15px !important;
+}
+
 /* Tab content */
 .tab-content-wrapper {
-    padding: 20px;
+    padding: 10px 16px;
 }
 
 .tab-header {
@@ -284,10 +304,11 @@ H5, H3 {
 
 .tab-header h4 {
     margin: 0;
+    font-size: 20px;
 }
 
 .plot-type-dropdown {
-    margin-bottom: 20px;
+    margin-bottom: 10px;
 }
 
 .plot-container {
@@ -298,6 +319,72 @@ H5, H3 {
 .plot-img {
     max-width: 100%;
     height: auto;
+    cursor: zoom-in;
+}
+
+/* Loading overlay — blocks all interaction while a callback is running */
+.loading-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 8888;
+    background: transparent;
+    cursor: wait;
+}
+
+/* Plot lightbox overlay */
+.lightbox-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.lightbox-img {
+    max-width: 92vw;
+    max-height: 92vh;
+    object-fit: contain;
+    cursor: default;
+    border-radius: 4px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+.lightbox-close {
+    position: absolute;
+    top: 16px;
+    right: 24px;
+    font-size: 40px;
+    line-height: 1;
+    color: #fff;
+    cursor: pointer;
+    user-select: none;
+    font-weight: 300;
+    opacity: 0.8;
+}
+
+.lightbox-close:hover {
+    opacity: 1;
+}
+
+.studies-display-dropdown .Select-value-label {
+    color: #555 !important;
+}
+
+/* Multi-plot grid: max 2 per row */
+.plot-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.plot-row-item {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
 }
 
 .plot-description {
@@ -309,6 +396,58 @@ H5, H3 {
 
 .error-message {
     color: red;
+}
+
+/* Individual study: combination summary table */
+.combo-summary {
+    display: inline-block;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+}
+
+.combo-summary-title {
+    font-weight: bold;
+    font-size: 13px;
+    margin: 0 0 6px 0;
+}
+
+.combo-summary-table {
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.combo-summary-table th,
+.combo-summary-table td {
+    padding: 3px 12px;
+    border: 1px solid #dee2e6;
+    text-align: left;
+}
+
+.combo-summary-table th {
+    background-color: #e9ecef;
+    font-weight: bold;
+}
+
+/* Individual study: one plot block per combination, 2 per row */
+.combo-plots-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 28px;
+}
+
+.combo-plot-item {
+    border-top: 1px solid #e0e0e0;
+    padding-top: 10px;
+}
+
+.combo-plot-label {
+    font-weight: bold;
+    font-size: 14px;
+    color: #333;
+    margin: 0 0 6px 0;
 }
 
 /* Welcome page */
@@ -386,10 +525,15 @@ H5, H3 {
 /* Statistics tables */
 .stats-table-wrapper {
     overflow-x: auto;
+    overflow-y: auto;
+    max-width: 100%;
+    max-height: 400px;
+    width: 100%;
 }
 
 .stats-table {
     width: 100%;
+    min-width: max-content;
     border-collapse: collapse;
     font-size: 13px;
 }
@@ -400,6 +544,28 @@ H5, H3 {
     padding: 8px 12px;
     text-align: left;
     font-weight: 600;
+}
+
+.sortable-th {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.sortable-th::after {
+    content: ' ⇅';
+    opacity: 0.5;
+    font-size: 11px;
+}
+
+.sortable-th[data-sort="asc"]::after {
+    content: ' ↑';
+    opacity: 1;
+}
+
+.sortable-th[data-sort="desc"]::after {
+    content: ' ↓';
+    opacity: 1;
 }
 
 .stats-table tbody td {
@@ -484,25 +650,75 @@ button.browser-study-item:hover {
     border: none;
 }
 
+/* Per-tab filter container (wraps studies row + filter bar) */
+.tab-filter-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Studies dropdown row (multi-study tabs only) */
+.tab-filter-studies-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 5px 0 0 0;
+}
+
+.tab-filter-studies-row label {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 1px;
+    display: block;
+}
+
 /* Per-tab inline filter bar */
 .tab-filter-bar {
     display: flex;
-    gap: 16px;
+    flex-direction: row;
     flex-wrap: wrap;
-    padding: 10px 0;
-    align-items: flex-end;
+    column-gap: 12px;
+    row-gap: 6px;
+    padding: 5px 0;
+    align-items: flex-start;
 }
 
 .tab-filter-item {
-    flex: 1;
-    min-width: 160px;
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 .tab-filter-item label {
-    font-size: 12px;
+    font-size: 14px;
     color: #666;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
     display: block;
+}
+
+/* Collapsed: fixed height, clip overflow */
+.tab-filter-item .Select-control {
+    height: 36px !important;
+    min-height: 36px !important;
+    overflow: hidden !important;
+}
+
+.tab-filter-item .Select-multi-value-wrapper {
+    overflow: hidden !important;
+    flex-wrap: nowrap !important;
+    max-height: 32px !important;
+}
+
+/* Expanded (focused): reveal all selected values */
+.tab-filter-item:focus-within .Select-control {
+    height: auto !important;
+    min-height: 36px !important;
+    overflow: visible !important;
+}
+
+.tab-filter-item:focus-within .Select-multi-value-wrapper {
+    overflow: visible !important;
+    flex-wrap: wrap !important;
+    max-height: none !important;
 }
 
 .tab-filter-radio {
